@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suscripción - comerciantes.com.ar</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">🏪 comerciantes<span>.com.ar</span></div>
+            <h1>Suscribite a tu Plan</h1>
+            <p>Elegí el plan perfecto para tu negocio y comenzá hoy mismo</p>
+        </div>
+
+        <!-- Form Container -->
+        <div class="form-container">
+            <!-- Plan Selection -->
+            <div class="plan-selection">
+                <h2>Seleccioná tu Plan</h2>
+
+                <div class="plan-option" data-plan="freemium" data-price="20000">
+                    <div class="plan-header">
+                        <span class="plan-name">Plan Freemium</span>
+                    </div>
+                    <div class="plan-price">
+                        $20.000 <span class="period">Pago único</span>
+                    </div>
+                    <ul class="plan-features">
+                        <li>Listado en el directorio</li>
+                        <li>Datos de contacto básicos</li>
+                        <li>Horarios de atención</li>
+                        <li>Ubicación en el mapa</li>
+                    </ul>
+                </div>
+
+                <div class="plan-option" data-plan="premium-mensual" data-price="20000">
+                    <div class="plan-header">
+                        <span class="plan-name">Plan Premium</span>
+                        <span class="plan-badge">RECOMENDADO</span>
+                    </div>
+                    <div class="plan-price">
+                        $20.000 <span class="period">/mes</span>
+                    </div>
+                    <ul class="plan-features">
+                        <li>Todo lo de Freemium</li>
+                        <li>Destacado en portada</li>
+                        <li>Galería ilimitada</li>
+                        <li>Ofertas y cupones</li>
+                        <li>Estadísticas avanzadas</li>
+                    </ul>
+                </div>
+
+                <div class="plan-option" data-plan="premium-anual" data-price="200000">
+                    <div class="plan-header">
+                        <span class="plan-name">Premium Anual</span>
+                    </div>
+                    <div class="plan-price">
+                        $200.000 <span class="period">/año</span>
+                        <span class="discount">Ahorrás 2 meses</span>
+                    </div>
+                    <ul class="plan-features">
+                        <li>Todo Premium Mensual</li>
+                        <li>2 meses gratis</li>
+                        <li>Precio fijo por 1 año</li>
+                    </ul>
+                </div>
+
+                <div class="plan-option" data-plan="vip" data-price="80000">
+                    <div class="plan-header">
+                        <span class="plan-name">Plan VIP</span>
+                        <span class="plan-badge vip">40% OFF</span>
+                    </div>
+                    <div class="plan-price">
+                        $80.000 <span class="period">/año</span>
+                        <span class="discount">¡Ahorrás $120.000!</span>
+                    </div>
+                    <ul class="plan-features">
+                        <li>Todo Premium Anual</li>
+                        <li>Sesión de fotos profesional</li>
+                        <li>Diseño personalizado</li>
+                        <li>Configuración completa</li>
+                        <li>Insignia VIP</li>
+                        <li>Solo primeros 15 comercios</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Subscription Form -->
+            <div class="subscription-form">
+                <h2>Datos de Suscripción</h2>
+                
+                <form id="subscriptionForm">
+                    <!-- Datos del Negocio -->
+                    <div class="form-section">
+                        <h3>📍 Datos del Negocio</h3>
+                        
+                        <div class="form-group">
+                            <label>Nombre del Negocio <span class="required">*</span></label>
+                            <input type="text" name="businessName" required placeholder="Ej: Panadería Don Juan">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Categoría <span class="required">*</span></label>
+                                <select name="category" required>
+                                    <option value="">Seleccionar...</option>
+                                    <option value="gastronomia">Gastronomía</option>
+                                    <option value="comerciantes">Comerciantes</option>
+                                    <option value="artesanias">Artesanías</option>
+                                    <option value="servicios">Servicios</option>
+                                    <option value="indumentaria">Indumentaria</option>
+                                    <option value="otros">Otros</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Teléfono <span class="required">*</span></label>
+                                <input type="tel" name="phone" required placeholder="Ej: 3447-123456">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Dirección <span class="required">*</span></label>
+                            <input type="text" name="address" required placeholder="Ej: Alejo Peyret 123">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Descripción del Negocio</label>
+                            <textarea name="description" placeholder="Contanos brevemente sobre tu negocio..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Datos del Titular -->
+                    <div class="form-section">
+                        <h3>👤 Datos del Titular</h3>
+                        
+                        <div class="form-group">
+                            <label>Nombre Completo <span class="required">*</span></label>
+                            <input type="text" name="ownerName" required placeholder="Ej: Juan Pérez">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Email <span class="required">*</span></label>
+                                <input type="email" name="email" required placeholder="tu@email.com">
+                            </div>
+
+                            <div class="form-group">
+                                <label>DNI <span class="required">*</span></label>
+                                <input type="text" name="dni" required placeholder="12345678">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Redes Sociales -->
+                    <div class="form-section">
+                        <h3>📱 Redes Sociales (Opcional)</h3>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>WhatsApp</label>
+                                <input type="tel" name="whatsapp" placeholder="549-3447-123456">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Instagram</label>
+                                <input type="text" name="instagram" placeholder="@tunegocio">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Términos -->
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="terms" name="terms" required>
+                        <label for="terms">Acepto los términos y condiciones <span class="required">*</span></label>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="newsletter" name="newsletter">
+                        <label for="newsletter">Quiero recibir novedades y promociones</label>
+                    </div>
+
+                    <!-- Summary -->
+                    <div class="order-summary">
+                        <h3>Resumen de tu Pedido</h3>
+                        <div class="summary-item">
+                            <span>Plan seleccionado:</span>
+                            <span id="selectedPlan">Ninguno</span>
+                        </div>
+                        <div class="summary-item total">
+                            <span>Total a pagar:</span>
+                            <span id="totalPrice">$0</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-submit" id="submitBtn" disabled>
+                        Confirmar Suscripción
+                    </button>
+
+                    <p class="security-notice">Tus datos están protegidos y seguros</p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal" id="successModal">
+        <div class="modal-content">
+            <div class="success-icon">🎉</div>
+            <h2>¡Suscripción Exitosa!</h2>
+            <p>Hemos recibido tu solicitud. Nos pondremos en contacto contigo en las próximas 24 horas para coordinar el pago y la activación de tu perfil.</p>
+            <p><strong>Revisá tu email</strong> para más información.</p>
+            <button class="btn-close" onclick="closeModal()">Entendido</button>
+        </div>
+    </div>
+
+    <script src="suscripciones.js"></script>
+</body>
+</html>
