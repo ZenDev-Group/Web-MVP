@@ -134,18 +134,26 @@ async function initDb() {
     console.log('Seeded default categories.');
   }
 
-  // Seed Default Admin User if empty
-  const userCount = await dbGet('SELECT COUNT(*) as count FROM usuarios_cuentas');
-  if (userCount.count === 0) {
-    const adminUser = process.env.ADMIN_USER || 'admin';
-    const adminPass = process.env.ADMIN_PASS || 'admin123';
-    // Storing plaintext or basic hash for simple MVP, let's store it as is since it's a basic MVP.
+  // Seed or Update Default Admin User
+  const adminUser = process.env.ADMIN_USER || 'admin';
+  const adminPass = process.env.ADMIN_PASS || 'admin123';
+  const email = adminUser.includes('@') ? adminUser : `${adminUser}@comerciantes.com.ar`;
+
+  const user = await dbGet("SELECT * FROM usuarios_cuentas WHERE rol = 'admin' LIMIT 1");
+  if (!user) {
     await dbRun('INSERT INTO usuarios_cuentas (email, password, rol) VALUES (?, ?, ?)', [
-      `${adminUser}@comerciantes.com.ar`,
+      email,
       adminPass,
       'admin'
     ]);
     console.log('Seeded default admin user.');
+  } else {
+    await dbRun('UPDATE usuarios_cuentas SET email = ?, password = ? WHERE id = ?', [
+      email,
+      adminPass,
+      user.id
+    ]);
+    console.log('Updated admin user credentials to match .env config.');
   }
 
   // Seed some dummy merchants/comercios if empty to showcase in lists
