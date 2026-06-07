@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ? 'http://localhost:3000' 
             : ''; // Relative URL for production
 
-        const apiUrl = `${apiBase}/api/subscriptions`;
+        const apiUrl = `${apiBase}/api/vendemax/subscriptions`;
 
         console.log('Enviando datos de suscripción VENDEMAX:', apiUrl, data);
         

@@ -184,6 +184,28 @@ function setupUserProfile() {
     if (avatarEl && email) {
         avatarEl.textContent = email.charAt(0).toUpperCase();
     }
+
+    // Dynamic VendeMax sidebar menu item for main admin only
+    const sidebarMenu = document.querySelector('.sidebar-menu');
+    if (sidebarMenu && email === 'iamgustav.olivera@gmail.com') {
+        if (!document.getElementById('menu-vendemax')) {
+            const li = document.createElement('li');
+            li.id = 'menu-vendemax';
+            
+            const params = new URLSearchParams(window.location.search);
+            const view = params.get('view');
+            if (view === 'vendemax') {
+                li.classList.add('active');
+                // Remove active class from other elements
+                document.querySelectorAll('.sidebar-menu li').forEach(item => {
+                    if (item !== li) item.classList.remove('active');
+                });
+            }
+            
+            li.innerHTML = `<a href="listados.html?view=vendemax"><span>🖥️</span> VendeMax</a>`;
+            sidebarMenu.appendChild(li);
+        }
+    }
 }
 
 // Run on page load

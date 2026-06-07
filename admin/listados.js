@@ -39,6 +39,17 @@ function initView() {
                 <span>➕</span> Nueva Categoría
             </button>
         `;
+    } else if (currentView === 'vendemax') {
+        // Gustav olivera enforcement
+        const email = localStorage.getItem('adminEmail');
+        if (email !== 'iamgustav.olivera@gmail.com') {
+            alert('Acceso no autorizado. Este panel es exclusivo para el administrador principal de VendeMax.');
+            window.location.href = 'index.html';
+            return;
+        }
+        viewTitle.textContent = 'Suscripciones VendeMax';
+        viewSubtitle.textContent = 'Control de licencias comerciales y estados de activación del software de facturación';
+        statusFilter.style.display = 'inline-block';
     }
 
     // Attach search and filter event listeners
@@ -55,6 +66,7 @@ async function fetchData() {
     else if (currentView === 'agrocomercios') endpoint = '/admin/agrocomercios';
     else if (currentView === 'cuentas') endpoint = '/admin/cuentas';
     else if (currentView === 'categorias') endpoint = '/admin/categorias';
+    else if (currentView === 'vendemax') endpoint = '/admin/vendemax/subscriptions';
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -83,7 +95,7 @@ function renderTable() {
     const filtered = listData.filter(item => {
         // Apply search
         let matchesSearch = false;
-        if (currentView === 'comercios' || currentView === 'agrocomercios') {
+        if (currentView === 'comercios' || currentView === 'agrocomercios' || currentView === 'vendemax') {
             matchesSearch = item.nombre_negocio.toLowerCase().includes(searchVal) ||
                             item.nombre_titular.toLowerCase().includes(searchVal) ||
                             item.email_titular.toLowerCase().includes(searchVal) ||
@@ -96,9 +108,9 @@ function renderTable() {
                             item.slug.toLowerCase().includes(searchVal);
         }
 
-        // Apply status filter (only relevant to commerce)
+        // Apply status filter (relevant to commerce and vendemax)
         let matchesStatus = true;
-        if ((currentView === 'comercios' || currentView === 'agrocomercios') && statusVal) {
+        if ((currentView === 'comercios' || currentView === 'agrocomercios' || currentView === 'vendemax') && statusVal) {
             matchesStatus = item.estado === statusVal;
         }
 
@@ -138,6 +150,69 @@ function renderTable() {
                 </td>
                 <td>${escapeHTML(c.categoria_nombre || 'Sin categoría')}</td>
                 <td><span class="badge-plan ${c.plan}">${c.plan}</span></td>
+                <td>${new Date(c.fecha_registro).toLocaleDateString('es-AR')}</td>
+                <td><span class="badge-status ${c.estado}">${c.estado}</span></td>
+                <td>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--bg-card); border: 1px solid var(--border-color);" onclick="openCommerceEdit(${c.id})">Editar</button>
+                        <button class="btn-logout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteCommerce(${c.id})">Eliminar</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    } else if (currentView === 'vendemax') {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Negocio VendeMax</th>
+                <th>Titular de Licencia</th>
+                <th>Plan Contratado</th>
+                <th>Clave de Licencia</th>
+                <th>Registro</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        `;
+        
+        tableBody.innerHTML = filtered.map(c => `
+            <tr>
+                <td>
+                    <div style="font-weight: 600; color: #1abc9c;">🖥️ ${escapeHTML(c.nombre_negocio)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">📍 ${escapeHTML(c.direccion)}</div>
+                    ${c.descripcion ? `<div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; font-style: italic;">"${escapeHTML(c.descripcion)}"</div>` : ''}
+                </td>
+                <td>
+                    <div>${escapeHTML(c.nombre_titular)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">✉ ${escapeHTML(c.email_titular)} | 📱 ${escapeHTML(c.telefono)}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">🪪 DNI: ${escapeHTML(c.dni_titular)}</div>
+                </td>
+                <td>
+                    <span class="badge-plan ${c.plan}">${c.plan}</span>
+                </td>
+                <td>
+                    ${c.licencia_clave ? `
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <div>
+                                🔑 <span style="font-family: monospace; font-weight: bold; background: rgba(26, 188, 156, 0.1); color: #1abc9c; padding: 0.1rem 0.35rem; border-radius: 4px; border: 1px dashed rgba(26, 188, 156, 0.3); font-size: 0.85rem;" title="Clave de Licencia">${escapeHTML(c.licencia_clave)}</span>
+                            </div>
+                            ${c.licencia_vencimiento ? `
+                                <div style="font-size: 0.7rem; color: var(--text-secondary);">
+                                    📅 Vence: ${new Date(c.licencia_vencimiento).toLocaleDateString('es-AR')}
+                                </div>
+                            ` : ''}
+                            ${c.machine_fingerprint ? `
+                                <div style="font-size: 0.7rem; color: #10b981; font-family: monospace;" title="PC Vinculada (Fingerprint)">
+                                    🖥️ ${escapeHTML(c.machine_fingerprint.substring(0, 15))}...
+                                </div>
+                            ` : `
+                                <div style="font-size: 0.7rem; color: var(--warning);">
+                                    ⚠️ PC no vinculada aún
+                                </div>
+                            `}
+                        </div>
+                    ` : `
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic;">Sin licencia (Inactivo)</span>
+                    `}
+                </td>
                 <td>${new Date(c.fecha_registro).toLocaleDateString('es-AR')}</td>
                 <td><span class="badge-status ${c.estado}">${c.estado}</span></td>
                 <td>
@@ -189,27 +264,32 @@ function renderTable() {
     }
 }
 
-// Delete commerce from table row
+// Delete commerce or subscription from table row
 async function deleteCommerce(id) {
-    if (!confirm('¿Estás seguro de que deseas eliminar este comercio permanentemente? Se borrarán sus datos asociados.')) return;
+    const isVendeMax = currentView === 'vendemax';
+    const objectLabel = isVendeMax ? 'suscripción de VendeMax' : 'comercio';
+    
+    if (!confirm(`¿Estás seguro de que deseas eliminar este/a ${objectLabel} permanentemente? Se borrarán sus datos asociados.`)) return;
+
+    const endpoint = isVendeMax ? `/admin/vendemax/subscriptions/${id}` : `/admin/comercios/${id}`;
 
     try {
-        const response = await fetch(`${API_URL}/admin/comercios/${id}`, {
+        const response = await fetch(`${API_URL}${endpoint}`, {
             method: 'DELETE',
             headers: getHeaders()
         });
 
         if (!response.ok) throw new Error('Error deleting commerce');
-        alert('Comercio eliminado con éxito.');
+        alert(`${isVendeMax ? 'Suscripción' : 'Comercio'} eliminado con éxito.`);
         fetchData();
     } catch (error) {
         console.error(error);
-        alert('Error al eliminar comercio.');
+        alert('Error al eliminar.');
     }
 }
 
 // ----------------------------------------------------
-// EDIT COMMERCE MODAL OPERATIONS
+// EDIT COMMERCE/SUBSCRIPTION MODAL OPERATIONS
 // ----------------------------------------------------
 
 function openCommerceEdit(id) {
@@ -221,9 +301,37 @@ function openCommerceEdit(id) {
     document.getElementById('commPhone').value = item.telefono;
     document.getElementById('commAddress').value = item.direccion;
     document.getElementById('commDesc').value = item.descripcion || '';
-    document.getElementById('commPlan').value = item.plan;
+    
+    const isVendeMax = currentView === 'vendemax';
+    
+    // Manage agricultural checkbox visibility
+    const isAgroContainer = document.getElementById('commIsAgro').closest('.form-group');
+    if (isAgroContainer) {
+        if (isVendeMax) {
+            isAgroContainer.style.display = 'none';
+        } else {
+            isAgroContainer.style.display = 'block';
+            document.getElementById('commIsAgro').checked = item.es_agrocomercio === 1;
+        }
+    }
+
+    // Populate plans options dynamically based on target system
+    const planSelect = document.getElementById('commPlan');
+    if (isVendeMax) {
+        planSelect.innerHTML = `
+            <option value="freemium">Freemium (15 Días)</option>
+            <option value="premium-mensual">Premium Mensual</option>
+            <option value="premium-anual">Premium Anual</option>
+            <option value="vip">VIP Anual</option>
+        `;
+    } else {
+        planSelect.innerHTML = `
+            <option value="gratuito">Gratuito</option>
+            <option value="destacado">Destacado</option>
+        `;
+    }
+    planSelect.value = item.plan;
     document.getElementById('commStatus').value = item.estado;
-    document.getElementById('commIsAgro').checked = item.es_agrocomercio === 1;
 
     document.getElementById('editCommerceModal').classList.add('active');
 }
@@ -236,6 +344,7 @@ function closeCommerceModal() {
 document.getElementById('commerceForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('editCommId').value;
+    const isVendeMax = currentView === 'vendemax';
     
     const data = {
         nombre_negocio: document.getElementById('commName').value,
@@ -243,12 +352,17 @@ document.getElementById('commerceForm').addEventListener('submit', async (e) => 
         direccion: document.getElementById('commAddress').value,
         descripcion: document.getElementById('commDesc').value,
         plan: document.getElementById('commPlan').value,
-        estado: document.getElementById('commStatus').value,
-        es_agrocomercio: document.getElementById('commIsAgro').checked ? 1 : 0
+        estado: document.getElementById('commStatus').value
     };
 
+    if (!isVendeMax) {
+        data.es_agrocomercio = document.getElementById('commIsAgro').checked ? 1 : 0;
+    }
+
+    const endpoint = isVendeMax ? `/admin/vendemax/subscriptions/${id}` : `/admin/comercios/${id}`;
+
     try {
-        const response = await fetch(`${API_URL}/admin/comercios/${id}`, {
+        const response = await fetch(`${API_URL}${endpoint}`, {
             method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(data)
@@ -256,11 +370,11 @@ document.getElementById('commerceForm').addEventListener('submit', async (e) => 
 
         if (!response.ok) throw new Error('Error updating commerce');
         closeCommerceModal();
-        alert('Comercio actualizado correctamente.');
+        alert(`${isVendeMax ? 'Suscripción' : 'Comercio'} actualizado correctamente.`);
         fetchData();
     } catch (error) {
         console.error(error);
-        alert('Error al guardar cambios del comercio.');
+        alert('Error al guardar cambios.');
     }
 });
 

@@ -83,7 +83,26 @@ async function initDb() {
     )
   `);
 
-  // 4. Create Tareas (JIRA tasks) Table
+  // 4. Create VendeMax Suscripciones Table (SEPARATED)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS vendemax_suscripciones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre_negocio TEXT NOT NULL,
+      telefono TEXT NOT NULL,
+      direccion TEXT NOT NULL,
+      descripcion TEXT,
+      nombre_titular TEXT NOT NULL,
+      email_titular TEXT NOT NULL,
+      dni_titular TEXT NOT NULL,
+      whatsapp TEXT,
+      instagram TEXT,
+      plan TEXT NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'pendiente',
+      fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 5. Create Tareas (JIRA tasks) Table with support for both types
   await dbRun(`
     CREATE TABLE IF NOT EXISTS tareas_trabajo (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,13 +111,23 @@ async function initDb() {
       estado TEXT NOT NULL DEFAULT 'todo',
       prioridad TEXT NOT NULL DEFAULT 'media',
       comercio_id INTEGER,
+      vendemax_suscripcion_id INTEGER,
       fecha_limite DATETIME,
       fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE SET NULL
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE SET NULL,
+      FOREIGN KEY (vendemax_suscripcion_id) REFERENCES vendemax_suscripciones (id) ON DELETE SET NULL
     )
   `);
 
-  // 5. Create Licencias Table
+  // Try to add the vendemax_suscripcion_id column if it doesn't exist (migrations fallback)
+  try {
+    await dbRun('ALTER TABLE tareas_trabajo ADD COLUMN vendemax_suscripcion_id INTEGER');
+    console.log('Added column vendemax_suscripcion_id to tareas_trabajo.');
+  } catch (e) {
+    // Column already exists, safe to ignore
+  }
+
+  // 6. Create Licencias Table (For Comerciantes directory if needed)
   await dbRun(`
     CREATE TABLE IF NOT EXISTS licencias (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,6 +139,21 @@ async function initDb() {
       machine_fingerprint TEXT,
       fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+
+  // 7. Create VendeMax Licencias Table (SEPARATED)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS vendemax_licencias (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      suscripcion_id INTEGER UNIQUE,
+      email TEXT UNIQUE NOT NULL,
+      clave TEXT UNIQUE NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'activo',
+      fecha_vencimiento DATETIME NOT NULL,
+      machine_fingerprint TEXT,
+      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (suscripcion_id) REFERENCES vendemax_suscripciones (id) ON DELETE CASCADE
     )
   `);
 
@@ -156,10 +200,21 @@ async function initDb() {
     console.log('Updated admin user credentials to match .env config.');
   }
 
-  // Seed some dummy merchants/comercios if empty to showcase in lists
+  // SEED SPECIFIC VENDEMAX ADMIN USER
+  const gustavEmail = 'iamgustav.olivera@gmail.com';
+  const gustavUser = await dbGet("SELECT * FROM usuarios_cuentas WHERE email = ?", [gustavEmail]);
+  if (!gustavUser) {
+    await dbRun('INSERT INTO usuarios_cuentas (email, password, rol) VALUES (?, ?, ?)', [
+      gustavEmail,
+      adminPass, // Uses the same admin password configured or admin123
+      'admin'
+    ]);
+    console.log(`Seeded VendeMax admin user: ${gustavEmail}`);
+  }
+
+  // Seed some dummy merchants/comercios if empty to showcase in lists (ONLY COMERCIANTES NOW)
   const commCount = await dbGet('SELECT COUNT(*) as count FROM comercios');
   if (commCount.count === 0) {
-    // Let's find category IDs
     const cats = await dbAll('SELECT id, slug FROM categorias');
     const catMap = {};
     cats.forEach(c => catMap[c.slug] = c.id);
@@ -176,7 +231,7 @@ async function initDb() {
         dni_titular: '28456123',
         whatsapp: '5493447451234',
         instagram: '@panaderiadonjuan',
-        plan: 'premium-mensual',
+        plan: 'gratuito', // Regular directory plan
         estado: 'activo',
         es_agrocomercio: 0
       },
@@ -191,7 +246,7 @@ async function initDb() {
         dni_titular: '30456789',
         whatsapp: '5493447421188',
         instagram: '@ferreteriaeltornillo',
-        plan: 'premium-anual',
+        plan: 'destacado', // Regular directory plan
         estado: 'activo',
         es_agrocomercio: 0
       },
@@ -206,7 +261,7 @@ async function initDb() {
         dni_titular: '32987654',
         whatsapp: '5493447482200',
         instagram: '@solyluna_boutique',
-        plan: 'premium-mensual',
+        plan: 'destacado',
         estado: 'activo',
         es_agrocomercio: 0
       },
@@ -221,7 +276,7 @@ async function initDb() {
         dni_titular: '25112233',
         whatsapp: '5493447495511',
         instagram: '@agroservicios_colon',
-        plan: 'vip',
+        plan: 'destacado',
         estado: 'activo',
         es_agrocomercio: 1
       },
@@ -236,7 +291,7 @@ async function initDb() {
         dni_titular: '22883344',
         whatsapp: '5493447438899',
         instagram: '@semillerialapradera',
-        plan: 'freemium',
+        plan: 'gratuito',
         estado: 'pendiente',
         es_agrocomercio: 1
       }
@@ -258,15 +313,95 @@ async function initDb() {
     console.log('Seeded default dummy merchants.');
   }
 
+  // Seed VendeMax Suscripciones if empty
+  const vmCount = await dbGet('SELECT COUNT(*) as count FROM vendemax_suscripciones');
+  if (vmCount.count === 0) {
+    const dummySubscriptions = [
+      {
+        nombre_negocio: 'Kiosco El Trébol',
+        telefono: '3447-458899',
+        direccion: 'San Martín 456, Colón',
+        descripcion: 'Kiosco y almacén rápido, requiere licencia de VendeMax.',
+        nombre_titular: 'Claudio Trébol',
+        email_titular: 'claudio@trebol.com',
+        dni_titular: '29883344',
+        whatsapp: '5493447458899',
+        instagram: '@kiosco_el_trebol',
+        plan: 'premium-mensual',
+        estado: 'activo'
+      },
+      {
+        nombre_negocio: 'Supermercado Sol',
+        telefono: '3447-493322',
+        direccion: 'Ferrari 789, Colón',
+        descripcion: 'Supermercado de barrio, control de inventario robusto.',
+        nombre_titular: 'Gustavo Soler',
+        email_titular: 'gustavo@supersol.com',
+        dni_titular: '27665544',
+        whatsapp: '5493447493322',
+        instagram: '@supermercado_sol',
+        plan: 'premium-anual',
+        estado: 'activo'
+      },
+      {
+        nombre_negocio: 'Minimarket Express',
+        telefono: '3447-414433',
+        direccion: 'Peyret 850, Colón',
+        descripcion: 'Minimarket 24hs, alta de plan piloto.',
+        nombre_titular: 'Romina Express',
+        email_titular: 'romina@express.com',
+        dni_titular: '34998877',
+        whatsapp: '5493447414433',
+        instagram: '@minimarket_express',
+        plan: 'freemium',
+        estado: 'pendiente'
+      }
+    ];
+
+    for (const s of dummySubscriptions) {
+      await dbRun(`
+        INSERT INTO vendemax_suscripciones (
+          nombre_negocio, telefono, direccion, descripcion, 
+          nombre_titular, email_titular, dni_titular, whatsapp, instagram, 
+          plan, estado
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        s.nombre_negocio, s.telefono, s.direccion, s.descripcion,
+        s.nombre_titular, s.email_titular, s.dni_titular, s.whatsapp, s.instagram,
+        s.plan, s.estado
+      ]);
+    }
+    console.log('Seeded dummy VendeMax subscriptions.');
+
+    // Seed VendeMax Licencias
+    const activeSubs = await dbAll("SELECT id, email_titular, plan FROM vendemax_suscripciones WHERE estado = 'activo'");
+    for (const s of activeSubs) {
+      let dias = 30;
+      if (s.plan === 'premium-anual') dias = 365;
+      
+      const fechaVencimiento = new Date();
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + dias);
+      const fechaVencimientoStr = fechaVencimiento.toISOString().replace('T', ' ').substring(0, 19);
+      
+      let clave = s.email_titular.includes('claudio') ? 'VMAX-KIO-TREBOL-8899' : 'VMAX-SUPER-SOL-3322';
+      
+      await dbRun(`
+        INSERT INTO vendemax_licencias (suscripcion_id, email, clave, estado, fecha_vencimiento)
+        VALUES (?, ?, ?, ?, ?)
+      `, [s.id, s.email_titular, clave, 'activo', fechaVencimientoStr]);
+    }
+    console.log('Seeded licenses for active VendeMax subscriptions.');
+  }
+
   // Seed default tasks for JIRA board if empty
   const taskCount = await dbGet('SELECT COUNT(*) as count FROM tareas_trabajo');
   if (taskCount.count === 0) {
-    const merchants = await dbAll('SELECT id, nombre_negocio, plan FROM comercios');
+    const merchants = await dbAll('SELECT id, nombre_negocio FROM comercios');
+    const vmSubs = await dbAll('SELECT id, nombre_negocio FROM vendemax_suscripciones');
     
-    // Find Semillería (which is pending) to create a task for it
     const semilleria = merchants.find(m => m.nombre_negocio.includes('Semillería'));
     const donJuan = merchants.find(m => m.nombre_negocio.includes('Don Juan'));
-    const agroservicios = merchants.find(m => m.nombre_negocio.includes('Agroservicios'));
+    const express = vmSubs.find(s => s.nombre_negocio.includes('Express'));
 
     const dummyTasks = [
       {
@@ -275,15 +410,17 @@ async function initDb() {
         estado: 'todo',
         prioridad: 'alta',
         comercio_id: semilleria ? semilleria.id : null,
-        fecha_limite: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString() // 2 days from now
+        vendemax_suscripcion_id: null,
+        fecha_limite: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
       },
       {
-        titulo: 'Sesión de fotos profesional: Agroservicios Colón',
-        descripcion: 'Coordinar con el fotógrafo para ir a Ruta 135 Km 5. Es cliente VIP de prelanzamiento.',
-        estado: 'in_progress',
-        prioridad: 'alta',
-        comercio_id: agroservicios ? agroservicios.id : null,
-        fecha_limite: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
+        titulo: 'Verificar registro VendeMax: Minimarket Express',
+        descripcion: 'Nuevo registro de VendeMax en plan Freemium. Coordinar entrega de instalador y verificar datos del titular Romina Express.',
+        estado: 'todo',
+        prioridad: 'media',
+        comercio_id: null,
+        vendemax_suscripcion_id: express ? express.id : null,
+        fecha_limite: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString()
       },
       {
         titulo: 'Diseñar perfil premium para Panadería Don Juan',
@@ -291,72 +428,21 @@ async function initDb() {
         estado: 'done',
         prioridad: 'media',
         comercio_id: donJuan ? donJuan.id : null,
+        vendemax_suscripcion_id: null,
         fecha_limite: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        titulo: 'Configurar pasarela de cobro para plan anual de Ferretería El Tornillo',
-        descripcion: 'Enviar link de pago de MercadoPago por $200.000. Confirmar acreditación.',
-        estado: 'todo',
-        prioridad: 'alta',
-        comercio_id: null,
-        fecha_limite: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        titulo: 'Revisión mensual de analíticas de visitas generales',
-        descripcion: 'Generar reporte de visitas en el sitio y enviar newsletter a los comercios adheridos.',
-        estado: 'in_progress',
-        prioridad: 'baja',
-        comercio_id: null,
-        fecha_limite: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString()
       }
     ];
 
     for (const t of dummyTasks) {
       await dbRun(`
         INSERT INTO tareas_trabajo (
-          titulo, descripcion, estado, prioridad, comercio_id, fecha_limite
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          titulo, descripcion, estado, prioridad, comercio_id, vendemax_suscripcion_id, fecha_limite
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [
-        t.titulo, t.descripcion, t.estado, t.prioridad, t.comercio_id, t.fecha_limite
+        t.titulo, t.descripcion, t.estado, t.prioridad, t.comercio_id, t.vendemax_suscripcion_id, t.fecha_limite
       ]);
     }
-    console.log('Seeded default JIRA-style tasks.');
-  }
-
-  // Seed Licencias for active merchants
-  const licCount = await dbGet('SELECT COUNT(*) as count FROM licencias');
-  if (licCount.count === 0) {
-    const activeComercios = await dbAll("SELECT id, email_titular, plan FROM comercios WHERE estado = 'activo'");
-    for (const c of activeComercios) {
-      let dias = 30;
-      if (c.plan === 'premium-anual') dias = 365;
-      else if (c.plan === 'vip') dias = 3650;
-      
-      const fechaVencimiento = new Date();
-      fechaVencimiento.setDate(fechaVencimiento.getDate() + dias);
-      const fechaVencimientoStr = fechaVencimiento.toISOString().replace('T', ' ').substring(0, 19);
-      
-      let clave = '';
-      if (c.email_titular.includes('juan')) clave = 'VMAX-JUAN-1234-ABCD';
-      else if (c.email_titular.includes('fabian')) clave = 'VMAX-FERR-ETIA-5678';
-      else if (c.email_titular.includes('sol')) clave = 'VMAX-BOUT-IQUE-9999';
-      else if (c.email_titular.includes('roberto')) clave = 'VMAX-AGRO-VIIP-0000';
-      else {
-        // Random key generator
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        clave = 'VMAX-';
-        for (let i = 0; i < 12; i++) {
-          if (i > 0 && i % 4 === 0) clave += '-';
-          clave += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-      }
-      
-      await dbRun(`
-        INSERT INTO licencias (comercio_id, email, clave, estado, fecha_vencimiento)
-        VALUES (?, ?, ?, ?, ?)
-      `, [c.id, c.email_titular, clave, 'activo', fechaVencimientoStr]);
-      console.log(`Seeded license for ${c.email_titular}: ${clave}`);
-    }
+    console.log('Seeded default JIRA-style tasks (directory and VendeMax).');
   }
 }
 

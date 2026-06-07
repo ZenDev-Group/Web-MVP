@@ -48,6 +48,31 @@ const requireAdmin = async (req, res, next) => {
   return res.status(403).json({ error: 'Permisos insuficientes.' });
 };
 
+// Middleware for checking VendeMax Admin authorization (restricted to iamgustav.olivera@gmail.com)
+const requireVendeMaxAdmin = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Acceso no autorizado. Se requiere token.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  
+  if (token === 'iamgustav.olivera@gmail.com') {
+    try {
+      const user = await dbGet('SELECT * FROM usuarios_cuentas WHERE email = ?', [token]);
+      if (user && user.rol === 'admin') {
+        return next();
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  return res.status(403).json({ 
+    error: 'Permisos insuficientes. Este panel es exclusivo para el administrador principal de VendeMax (iamgustav.olivera@gmail.com).' 
+  });
+};
+
 // Helper to create Mercado Pago Checkout Pro Preference
 async function crearPreferenciaMercadoPago(plan, precio, negocio, commerceId) {
   const token = process.env.MP_ACCESS_TOKEN;
@@ -107,9 +132,7 @@ async function crearPreferenciaMercadoPago(plan, precio, negocio, commerceId) {
 
 // ----------------------------------------------------
 // PUBLIC ENDPOINTS
-// ----------------------------------------------------
-
-// POST /api/subscriptions - Register new commerce
+// --------------------------------------------------// POST /api/subscriptions - Register new directory commerce (Comerciantes)
 app.post('/api/subscriptions', async (req, res) => {
   try {
     const {
@@ -127,7 +150,7 @@ app.post('/api/subscriptions', async (req, res) => {
     } = req.body;
 
     if (!businessName || !phone || !address || !ownerName || !email || !dni || !plan) {
-      return res.status(400).json({ error: 'Faltan campos obligatorios obligatorios para la suscripción.' });
+      return res.status(400).json({ error: 'Faltan campos obligatorios para la suscripción.' });
     }
 
     // Resolve category_id from category slug
@@ -174,15 +197,15 @@ app.post('/api/subscriptions', async (req, res) => {
 
     // AUTO-CREATE JIRA TASK for this new registration
     const taskTitle = `Verificar registro de: ${businessName}`;
-    const taskDesc = `Nuevo comercio registrado vía formulario de suscripciones.\n` +
+    const taskDesc = `Nuevo comercio registrado vía formulario de suscripciones del directorio.\n` +
       `- Plan: ${plan.toUpperCase()}\n` +
       `- Titular: ${ownerName}\n` +
       `- Email: ${email} | Tel: ${phone}\n` +
       `- Ubicación: ${address}\n` +
       `- Redes: WhatsApp (${whatsapp || 'N/A'}) | Instagram (${instagram || 'N/A'})\n\n` +
-      `Acción requerida: Verificar datos, coordinar pago del plan y cambiar estado a Activo.`;
+      `Acción requerida: Verificar datos, coordinar activación y cambiar estado a Activo.`;
 
-    const priority = plan === 'vip' || plan === 'premium-anual' ? 'alta' : 'media';
+    const priority = 'media';
     const deadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours to complete
 
     await dbRun(`
@@ -191,21 +214,12 @@ app.post('/api/subscriptions', async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?)
     `, [taskTitle, taskDesc, 'todo', priority, commerceId, deadline]);
 
-    console.log(`New subscription registered: ${businessName} (ID: ${commerceId}), created JIRA verification task.`);
-
-    // Determine price dynamically based on plan
-    let precio = 20000;
-    if (plan === 'premium-anual') precio = 200000;
-    else if (plan === 'vip') precio = 80000;
-
-    // Create Mercado Pago preference
-    const preference = await crearPreferenciaMercadoPago(plan, precio, businessName, commerceId);
+    console.log(`New directory subscription registered: ${businessName} (ID: ${commerceId}), created JIRA verification task.`);
 
     res.status(201).json({ 
       success: true, 
-      message: 'Suscripción registrada con éxito.',
-      commerceId,
-      initPoint: preference ? preference.init_point : null
+      message: 'Suscripción de comercio registrada con éxito.',
+      commerceId
     });
 
   } catch (error) {
@@ -214,8 +228,93 @@ app.post('/api/subscriptions', async (req, res) => {
   }
 });
 
-// POST /api/licencia/validar - Verify desktop app license key with HMAC security
-app.post('/api/licencia/validar', async (req, res) => {
+// POST /api/vendemax/subscriptions - Register new VendeMax subscription (SEPARATED)
+app.post('/api/vendemax/subscriptions', async (req, res) => {
+  try {
+    const {
+      plan,
+      businessName,
+      phone,
+      address,
+      description,
+      ownerName,
+      email,
+      dni,
+      whatsapp,
+      instagram
+    } = req.body;
+
+    if (!businessName || !phone || !address || !ownerName || !email || !dni || !plan) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios para la suscripción de VendeMax.' });
+    }
+
+    // Insert VendeMax subscription with 'pendiente' status
+    const result = await dbRun(`
+      INSERT INTO vendemax_suscripciones (
+        nombre_negocio, telefono, direccion, descripcion, 
+        nombre_titular, email_titular, dni_titular, whatsapp, instagram, 
+        plan, estado
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      businessName,
+      phone,
+      address,
+      description || '',
+      ownerName,
+      email,
+      dni,
+      whatsapp || '',
+      instagram || '',
+      plan,
+      'pendiente'
+    ]);
+
+    const subscriptionId = result.lastID;
+
+    // AUTO-CREATE JIRA TASK for this new VendeMax registration
+    const taskTitle = `Verificar registro VendeMax: ${businessName}`;
+    const taskDesc = `Nueva suscripción de VendeMax registrada vía formulario web.\n` +
+      `- Plan: ${plan.toUpperCase()}\n` +
+      `- Titular: ${ownerName}\n` +
+      `- Email: ${email} | Tel: ${phone}\n` +
+      `- Ubicación: ${address}\n` +
+      `- Redes: WhatsApp (${whatsapp || 'N/A'}) | Instagram (${instagram || 'N/A'})\n\n` +
+      `Acción requerida: Verificar datos, coordinar pago del plan y cambiar estado a Activo para generar licencia comercial.`;
+
+    const priority = plan === 'vip' || plan === 'premium-anual' ? 'alta' : 'media';
+    const deadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours to complete
+
+    await dbRun(`
+      INSERT INTO tareas_trabajo (
+        titulo, descripcion, estado, prioridad, vendemax_suscripcion_id, fecha_limite
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `, [taskTitle, taskDesc, 'todo', priority, subscriptionId, deadline]);
+
+    console.log(`New VendeMax subscription registered: ${businessName} (ID: ${subscriptionId}), created JIRA verification task.`);
+
+    // Determine price dynamically based on VendeMax plan
+    let precio = 20000;
+    if (plan === 'premium-anual') precio = 200000;
+    else if (plan === 'vip') precio = 80000;
+
+    // Create Mercado Pago preference specifically for VendeMax
+    const preference = await crearPreferenciaMercadoPago(plan, precio, businessName, subscriptionId);
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Suscripción de VendeMax registrada con éxito.',
+      subscriptionId,
+      initPoint: preference ? preference.init_point : null
+    });
+
+  } catch (error) {
+    console.error('Error in POST /api/vendemax/subscriptions:', error);
+    res.status(500).json({ error: 'Error interno del servidor al registrar la suscripción de VendeMax.' });
+  }
+});
+
+// Reuseable function to validate license against the separated vendemax_licencias table
+const validateVendeMaxLicenseHandler = async (req, res) => {
   const { email, clave, machineFingerprint } = req.body;
 
   if (!email || !clave) {
@@ -223,7 +322,7 @@ app.post('/api/licencia/validar', async (req, res) => {
   }
 
   try {
-    const lic = await dbGet('SELECT * FROM licencias WHERE email = ? AND clave = ?', [
+    const lic = await dbGet('SELECT * FROM vendemax_licencias WHERE email = ? AND clave = ?', [
       email.trim().toLowerCase(), 
       clave.trim().toUpperCase()
     ]);
@@ -244,7 +343,7 @@ app.post('/api/licencia/validar', async (req, res) => {
 
     // Verificar o registrar el machine fingerprint (bloqueo por hardware)
     if (!lic.machine_fingerprint) {
-      await dbRun('UPDATE licencias SET machine_fingerprint = ? WHERE id = ?', [machineFingerprint, lic.id]);
+      await dbRun('UPDATE vendemax_licencias SET machine_fingerprint = ? WHERE id = ?', [machineFingerprint, lic.id]);
       lic.machine_fingerprint = machineFingerprint;
     } else if (lic.machine_fingerprint !== machineFingerprint) {
       return res.status(403).json({ mensaje: 'Esta licencia ya está activa en otra computadora.' });
@@ -273,10 +372,16 @@ app.post('/api/licencia/validar', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al validar licencia:', error);
+    console.error('Error al validar licencia de VendeMax:', error);
     res.status(500).json({ mensaje: 'Error interno del servidor al verificar la licencia.' });
   }
-});
+};
+
+// POST /api/licencia/validar - Verify desktop app license key (Used by existing C# desktop apps)
+app.post('/api/licencia/validar', validateVendeMaxLicenseHandler);
+
+// POST /api/vendemax/licencia/validar - Decoupled route for new integrations
+app.post('/api/vendemax/licencia/validar', validateVendeMaxLicenseHandler);
 
 // ----------------------------------------------------
 // ADMIN AUTHENTICATION
@@ -317,7 +422,7 @@ app.post('/api/auth/login', async (req, res) => {
 // ADMIN PROTECTED ENDPOINTS
 // ----------------------------------------------------
 
-// GET /api/admin/stats - Overview metrics
+// GET /api/admin/stats - Overview metrics (DIRECTORY ONLY)
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     const totalComercios = await dbGet('SELECT COUNT(*) as count FROM comercios');
@@ -326,26 +431,20 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     const activeComercios = await dbGet("SELECT COUNT(*) as count FROM comercios WHERE estado = 'activo'");
     const totalCuentas = await dbGet('SELECT COUNT(*) as count FROM usuarios_cuentas');
     
-    // Revenue estimates (Sum monthly rates and one-off fees)
-    // Premium Monthly: $20.000 / month, VIP/Premium Annual: full price
+    // Revenue estimates (DIRECTORY ONLY: $5.000 for 'destacado' plan, $0 for others)
     const activeMerchants = await dbAll("SELECT plan FROM comercios WHERE estado = 'activo'");
     let monthlyRevenue = 0;
     let totalSalesValue = 0;
     activeMerchants.forEach(m => {
-      if (m.plan === 'premium-mensual') {
-        monthlyRevenue += 20000;
-        totalSalesValue += 20000;
-      } else if (m.plan === 'premium-anual') {
-        totalSalesValue += 200000;
-      } else if (m.plan === 'vip') {
-        totalSalesValue += 80000;
-      } else if (m.plan === 'freemium') {
-        totalSalesValue += 20000;
+      if (m.plan === 'destacado') {
+        monthlyRevenue += 5000;
+        totalSalesValue += 5000;
       }
     });
 
-    const tasksTodo = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'todo'");
-    const tasksInProgress = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'in_progress'");
+    // Count tasks for directory only
+    const tasksTodo = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'todo' AND vendemax_suscripcion_id IS NULL");
+    const tasksInProgress = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'in_progress' AND vendemax_suscripcion_id IS NULL");
 
     res.json({
       totalComercios: totalComercios.count,
@@ -363,6 +462,138 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/vendemax/stats - Metrics for VendeMax (restricted to iamgustav.olivera@gmail.com)
+app.get('/api/admin/vendemax/stats', requireVendeMaxAdmin, async (req, res) => {
+  try {
+    const totalSubs = await dbGet('SELECT COUNT(*) as count FROM vendemax_suscripciones');
+    const pendingSubs = await dbGet("SELECT COUNT(*) as count FROM vendemax_suscripciones WHERE estado = 'pendiente'");
+    const activeSubs = await dbGet("SELECT COUNT(*) as count FROM vendemax_suscripciones WHERE estado = 'activo'");
+    
+    const activeVMerchants = await dbAll("SELECT plan FROM vendemax_suscripciones WHERE estado = 'activo'");
+    let monthlyRevenue = 0;
+    let totalSalesValue = 0;
+    activeVMerchants.forEach(m => {
+      if (m.plan === 'premium-mensual') {
+        monthlyRevenue += 20000;
+        totalSalesValue += 20000;
+      } else if (m.plan === 'premium-anual') {
+        totalSalesValue += 200000;
+      } else if (m.plan === 'vip') {
+        totalSalesValue += 80000;
+      } else if (m.plan === 'freemium') {
+        // Assume freemium has no revenue unless converted, or 15 days trial is free
+      }
+    });
+
+    const tasksTodo = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'todo' AND vendemax_suscripcion_id IS NOT NULL");
+    const tasksInProgress = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'in_progress' AND vendemax_suscripcion_id IS NOT NULL");
+
+    res.json({
+      totalSubscriptions: totalSubs.count,
+      pendingSubscriptions: pendingSubs.count,
+      activeSubscriptions: activeSubs.count,
+      monthlyRevenue,
+      totalSalesValue,
+      tasksPending: tasksTodo.count + tasksInProgress.count
+    });
+  } catch (error) {
+    console.error('Error in GET /api/admin/vendemax/stats:', error);
+    res.status(500).json({ error: 'Error al obtener métricas de VendeMax.' });
+  }
+});
+
+// GET /api/admin/vendemax/subscriptions - List VendeMax subscriptions (restricted to iamgustav.olivera@gmail.com)
+app.get('/api/admin/vendemax/subscriptions', requireVendeMaxAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(`
+      SELECT s.*, l.clave as licencia_clave, l.estado as licencia_estado, l.fecha_vencimiento as licencia_vencimiento
+      FROM vendemax_suscripciones s
+      LEFT JOIN vendemax_licencias l ON s.id = l.suscripcion_id
+      ORDER BY s.fecha_registro DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error in GET /api/admin/vendemax/subscriptions:', error);
+    res.status(500).json({ error: 'Error al obtener suscripciones de VendeMax.' });
+  }
+});
+
+// PUT /api/admin/vendemax/subscriptions/:id - Edit VendeMax subscription and license (restricted to iamgustav.olivera@gmail.com)
+app.put('/api/admin/vendemax/subscriptions/:id', requireVendeMaxAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { nombre_negocio, telefono, direccion, descripcion, plan, estado } = req.body;
+
+  try {
+    const sub = await dbGet('SELECT * FROM vendemax_suscripciones WHERE id = ?', [id]);
+    if (!sub) {
+      return res.status(404).json({ error: 'Suscripción no encontrada.' });
+    }
+
+    await dbRun(`
+      UPDATE vendemax_suscripciones 
+      SET nombre_negocio = ?, telefono = ?, direccion = ?, descripcion = ?, plan = ?, estado = ?
+      WHERE id = ?
+    `, [
+      nombre_negocio || sub.nombre_negocio,
+      telefono || sub.telefono,
+      direccion || sub.direccion,
+      descripcion !== undefined ? descripcion : sub.descripcion,
+      plan || sub.plan,
+      estado || sub.estado,
+      id
+    ]);
+
+    const finalEstado = estado || sub.estado;
+    if (finalEstado === 'activo') {
+      const existingLicense = await dbGet('SELECT * FROM vendemax_licencias WHERE suscripcion_id = ?', [id]);
+      
+      let dias = 30;
+      const planFinal = plan || sub.plan;
+      if (planFinal === 'premium-anual') dias = 365;
+      else if (planFinal === 'vip') dias = 3650;
+      else if (planFinal === 'freemium') dias = 15;
+      
+      const fechaVencimiento = new Date();
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + dias);
+      const fechaVencimientoStr = fechaVencimiento.toISOString().replace('T', ' ').substring(0, 19);
+
+      if (!existingLicense) {
+        const clave = generarClaveLicencia();
+        await dbRun(`
+          INSERT INTO vendemax_licencias (suscripcion_id, email, clave, estado, fecha_vencimiento)
+          VALUES (?, ?, ?, ?, ?)
+        `, [id, sub.email_titular, clave, 'activo', fechaVencimientoStr]);
+        console.log(`Generated new VendeMax license for ${sub.email_titular}: ${clave}`);
+      } else {
+        await dbRun(`
+          UPDATE vendemax_licencias 
+          SET fecha_vencimiento = ?, estado = 'activo'
+          WHERE id = ?
+        `, [fechaVencimientoStr, existingLicense.id]);
+      }
+    } else if (estado && estado !== 'activo' && sub.estado === 'activo') {
+      await dbRun("UPDATE vendemax_licencias SET estado = 'suspendido' WHERE suscripcion_id = ?", [id]);
+      console.log(`Suspended license for VendeMax subscription ID: ${id}`);
+    }
+
+    res.json({ success: true, message: 'Suscripción y licencia de VendeMax actualizadas correctamente.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al actualizar la suscripción de VendeMax.' });
+  }
+});
+
+// DELETE /api/admin/vendemax/subscriptions/:id - Delete VendeMax subscription (restricted to iamgustav.olivera@gmail.com)
+app.delete('/api/admin/vendemax/subscriptions/:id', requireVendeMaxAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbRun('DELETE FROM vendemax_suscripciones WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Suscripción de VendeMax eliminada con éxito.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar suscripción.' });
+  }
+});
+
 // GET /api/admin/cuentas
 app.get('/api/admin/cuentas', requireAdmin, async (req, res) => {
   try {
@@ -376,7 +607,7 @@ app.get('/api/admin/cuentas', requireAdmin, async (req, res) => {
 // GET /api/admin/comercios
 app.get('/api/admin/comercios', requireAdmin, async (req, res) => {
   try {
-    // Include category name and active license key in the output
+    // Include category name and active license key in the output (ONLY Directory Comercios)
     const rows = await dbAll(`
       SELECT c.*, cat.nombre as categoria_nombre, l.clave as licencia_clave, l.estado as licencia_estado, l.fecha_vencimiento as licencia_vencimiento
       FROM comercios c
@@ -521,9 +752,15 @@ app.post('/api/admin/categorias', requireAdmin, async (req, res) => {
 app.get('/api/admin/tareas', requireAdmin, async (req, res) => {
   try {
     const rows = await dbAll(`
-      SELECT t.*, c.nombre_negocio as comercio_nombre 
+      SELECT t.*, 
+             CASE 
+               WHEN t.comercio_id IS NOT NULL THEN c.nombre_negocio
+               WHEN t.vendemax_suscripcion_id IS NOT NULL THEN v.nombre_negocio
+               ELSE 'General / Sin vincular'
+             END as comercio_nombre
       FROM tareas_trabajo t
       LEFT JOIN comercios c ON t.comercio_id = c.id
+      LEFT JOIN vendemax_suscripciones v ON t.vendemax_suscripcion_id = v.id
       ORDER BY t.fecha_creacion DESC
     `);
     res.json(rows);
