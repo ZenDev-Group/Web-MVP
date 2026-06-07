@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Listados | comerciantes.com.ar</title>
+    <link rel="stylesheet" href="admin-style.css">
+</head>
+<body>
+
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <span>🏪</span>
+                <span>Admin Panel</span>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="index.html"><span>📊</span> Resumen</a></li>
+                <li><a href="tablero.html"><span>📋</span> Tablero JIRA</a></li>
+                <li id="menu-comercios"><a href="listados.html?view=comercios"><span>🏢</span> Comercios</a></li>
+                <li id="menu-agrocomercios"><a href="listados.html?view=agrocomercios"><span>🌾</span> Agrocomercios</a></li>
+                <li id="menu-cuentas"><a href="listados.html?view=cuentas"><span>👥</span> Cuentas</a></li>
+                <li id="menu-categorias"><a href="listados.html?view=categorias"><span>📁</span> Categorías</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="logout()"><span>🚪</span> Cerrar Sesión</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top bar -->
+            <div class="top-bar">
+                <div class="page-title">
+                    <h1 id="viewTitle">Cargando...</h1>
+                    <p id="viewSubtitle">Administración de datos del sistema</p>
+                </div>
+                <div id="actionButtonContainer">
+                    <!-- Botones de acción dinámicos, ej: Agregar Categoría -->
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <section class="section-card">
+                <div class="table-header">
+                    <div class="table-filters">
+                        <input type="text" id="searchInput" class="search-input" placeholder="Buscar por nombre...">
+                        
+                        <!-- Filtro de estado (solo visible en listado de comercios) -->
+                        <select id="statusFilter" class="filter-select" style="display: none;">
+                            <option value="">Todos los Estados</option>
+                            <option value="activo">Activo</option>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="suspendido">Suspendido</option>
+                        </select>
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.9rem;" id="recordCount">0 registros</div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead id="tableHead">
+                            <!-- Inyectado dinámicamente -->
+                        </thead>
+                        <tbody id="tableBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                                    Cargando listado...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL: CREAR CATEGORÍA -->
+    <div class="modal-admin" id="categoryModal">
+        <div class="modal-admin-content">
+            <div class="modal-admin-header">
+                <h2>Nueva Categoría</h2>
+                <button class="modal-close-btn" onclick="closeCategoryModal()">✕</button>
+            </div>
+            <form id="categoryForm">
+                <div class="form-group">
+                    <label for="catSlug">Slug (Único, sin espacios)</label>
+                    <input type="text" id="catSlug" class="form-input" placeholder="Ej: tecnologia-electronica" required>
+                </div>
+                <div class="form-group">
+                    <label for="catName">Nombre Visible</label>
+                    <input type="text" id="catName" class="form-input" placeholder="Ej: Tecnología y Electrónica" required>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeCategoryModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary-admin">Crear Categoría</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: EDITAR COMERCIO -->
+    <div class="modal-admin" id="editCommerceModal">
+        <div class="modal-admin-content" style="max-width: 650px;">
+            <div class="modal-admin-header">
+                <h2>Editar Comercio</h2>
+                <button class="modal-close-btn" onclick="closeCommerceModal()">✕</button>
+            </div>
+            <form id="commerceForm">
+                <input type="hidden" id="editCommId">
+                <div class="form-group">
+                    <label for="commName">Nombre del Negocio</label>
+                    <input type="text" id="commName" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="commPhone">Teléfono de Contacto</label>
+                    <input type="text" id="commPhone" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="commAddress">Dirección</label>
+                    <input type="text" id="commAddress" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="commDesc">Descripción</label>
+                    <textarea id="commDesc" class="form-input" style="height: 80px; resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="commPlan">Plan Suscripción</label>
+                    <select id="commPlan" class="form-input" style="cursor: pointer;">
+                        <option value="freemium">Freemium</option>
+                        <option value="premium-mensual">Premium Mensual</option>
+                        <option value="premium-anual">Premium Anual</option>
+                        <option value="vip">VIP Prelanzamiento</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="commStatus">Estado de la cuenta</label>
+                    <select id="commStatus" class="form-input" style="cursor: pointer;">
+                        <option value="activo">Activo</option>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="suspendido">Suspendido</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                    <input type="checkbox" id="commIsAgro" style="width: 18px; height: 18px; cursor: pointer;">
+                    <label for="commIsAgro" style="margin-bottom: 0; cursor: pointer; user-select: none;">¿Es un Agrocomercio? (Se listará en sección agrícola)</label>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeCommerceModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary-admin">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+    <script src="listados.js"></script>
+</body>
+</html>

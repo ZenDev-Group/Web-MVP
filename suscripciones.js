@@ -53,10 +53,47 @@
 
             console.log('Datos de suscripción:', data);
             
-            // Aquí se enviarían los datos al backend
-            // Por ahora solo mostramos el modal de éxito
-            
-            modal.classList.add('active');
+            // Deshabilitar botón durante envío
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Enviando...';
+
+            // Determine dynamic API URL based on host (local vs production)
+            const host = window.location.hostname;
+            const apiBase = (host === 'localhost' || host === '127.0.0.1' || host === '') 
+                ? 'http://localhost:3000' 
+                : ''; // Relative URL for production
+
+            const apiUrl = `${apiBase}/api/subscriptions`;
+
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Error en el servidor al registrar la suscripción');
+                }
+                return response.json();
+            })
+            .then(res => {
+                console.log('Suscripción registrada con éxito:', res);
+                if (res.initPoint) {
+                    window.location.href = res.initPoint;
+                } else {
+                    modal.classList.add('active');
+                }
+            })
+            .catch(error => {
+                console.error('Error al enviar suscripción:', error);
+                alert('Hubo un problema al procesar tu suscripción. Por favor, intentá de nuevo.');
+            })
+            .finally(() => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Confirmar Suscripción';
+            });
         });
 
         function closeModal() {

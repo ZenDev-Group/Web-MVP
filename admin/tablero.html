@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablero de Trabajo JIRA | comerciantes.com.ar</title>
+    <link rel="stylesheet" href="admin-style.css">
+</head>
+<body>
+
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <span>🏪</span>
+                <span>Admin Panel</span>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="index.html"><span>📊</span> Resumen</a></li>
+                <li class="active"><a href="tablero.html"><span>📋</span> Tablero JIRA</a></li>
+                <li><a href="listados.html?view=comercios"><span>🏢</span> Comercios</a></li>
+                <li><a href="listados.html?view=agrocomercios"><span>🌾</span> Agrocomercios</a></li>
+                <li><a href="listados.html?view=cuentas"><span>👥</span> Cuentas</a></li>
+                <li><a href="listados.html?view=categorias"><span>📁</span> Categorías</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="logout()"><span>🚪</span> Cerrar Sesión</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top bar -->
+            <div class="top-bar">
+                <div class="page-title">
+                    <h1>Tablero de Trabajo</h1>
+                    <p>Gestioná el flujo de tareas pendientes estilo JIRA (Kanban)</p>
+                </div>
+                <button class="btn-primary-admin" onclick="openCreateModal()">
+                    <span>➕</span> Nueva Tarea
+                </button>
+            </div>
+
+            <!-- Kanban Board -->
+            <section class="kanban-container">
+                <!-- Columna: Por Hacer (TODO) -->
+                <div class="kanban-column" id="col-todo" ondragover="allowDrop(event)" ondrop="drop(event, 'todo')">
+                    <h3>Por Hacer <span class="badge" id="count-todo">0</span></h3>
+                    <div class="kanban-cards" id="todo-cards">
+                        <!-- Tarjetas inyectadas dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- Columna: En Progreso (IN PROGRESS) -->
+                <div class="kanban-column" id="col-inprogress" ondragover="allowDrop(event)" ondrop="drop(event, 'in_progress')">
+                    <h3>En Progreso <span class="badge" id="count-inprogress">0</span></h3>
+                    <div class="kanban-cards" id="inprogress-cards">
+                        <!-- Tarjetas inyectadas dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- Columna: Completado (DONE) -->
+                <div class="kanban-column" id="col-done" ondragover="allowDrop(event)" ondrop="drop(event, 'done')">
+                    <h3>Completado <span class="badge" id="count-done">0</span></h3>
+                    <div class="kanban-cards" id="done-cards">
+                        <!-- Tarjetas inyectadas dinámicamente -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL: CREAR / EDITAR TAREA -->
+    <div class="modal-admin" id="taskModal">
+        <div class="modal-admin-content">
+            <div class="modal-admin-header">
+                <h2 id="modalTitle">Nueva Tarea</h2>
+                <button class="modal-close-btn" onclick="closeModal()">✕</button>
+            </div>
+            <form id="taskForm">
+                <input type="hidden" id="taskId">
+                <div class="form-group">
+                    <label for="taskTitleInput">Título de la Tarea <span style="color: var(--danger)">*</span></label>
+                    <input type="text" id="taskTitleInput" class="form-input" placeholder="Ej: Llamar a Panadería Don Juan" required>
+                </div>
+                <div class="form-group">
+                    <label for="taskDescInput">Descripción / Detalles</label>
+                    <textarea id="taskDescInput" class="form-input" style="height: 100px; resize: vertical;" placeholder="Detalles de la tarea..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="taskPriorityInput">Prioridad</label>
+                    <select id="taskPriorityInput" class="form-input" style="cursor: pointer;">
+                        <option value="baja">Baja</option>
+                        <option value="media" selected>Media</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="taskCommerceInput">Comercio Asociado (Opcional)</label>
+                    <select id="taskCommerceInput" class="form-input" style="cursor: pointer;">
+                        <option value="">Ninguno</option>
+                        <!-- Cargados dinámicamente -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="taskDeadlineInput">Fecha Límite</label>
+                    <input type="date" id="taskDeadlineInput" class="form-input">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary-admin">Guardar Tarea</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+    <script src="tablero.js"></script>
+</body>
+</html>

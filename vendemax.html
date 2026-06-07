@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suscripción y Descarga VENDEMAX | comerciantes.com.ar</title>
+    <meta name="description" content="Suscripción al sistema VENDEMAX de control de stock y punto de venta. Descargá el instalador y obtené tu licencia comercial.">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+    <style>
+        :root {
+            --color-fondo-dark: #0F0F1A;
+            --color-fondo-card: #181827;
+            --color-primario: #1abc9c; /* Verde turquesa */
+            --color-destacado: #ffd700; /* Amarillo/Oro */
+            --color-texto-dark: #FFFFFF;
+            --color-texto-secundario: #9fb3c8;
+            --color-borde: #2D2D44;
+            --fuente: 'Montserrat', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--fuente);
+            background-color: var(--color-fondo-dark);
+            color: var(--color-texto-dark);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* HEADER */
+        .header {
+            padding: 16px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 10;
+            background: linear-gradient(135deg, #181827 0%, #0F0F1A 100%);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--color-borde);
+            box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+            text-decoration: none;
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        .nav-logo span.icon {
+            color: var(--color-destacado);
+        }
+
+        .btn-back {
+            color: var(--color-texto-secundario);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.3s ease;
+        }
+
+        .btn-back:hover {
+            color: var(--color-destacado);
+        }
+
+        /* MAIN */
+        .main-content {
+            padding-top: 130px;
+            padding-bottom: 80px;
+        }
+
+        .page-title-section {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .page-title-section h1 {
+            font-size: 2.8rem;
+            font-weight: 300;
+            margin-bottom: 12px;
+        }
+
+        .page-title-section h1 span {
+            color: var(--color-destacado);
+            font-weight: 700;
+        }
+
+        .page-title-section p {
+            color: var(--color-texto-secundario);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* GRID LAYOUT */
+        .checkout-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 40px;
+            align-items: start;
+        }
+
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--color-borde);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title i {
+            color: var(--color-destacado);
+        }
+
+        /* DOWNLOAD BOX */
+        .download-box {
+            background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            color: white;
+            box-shadow: 0 10px 30px rgba(26,188,156,0.25);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .download-box::before {
+            content: "🖥️";
+            position: absolute;
+            right: -20px;
+            bottom: -20px;
+            font-size: 8rem;
+            opacity: 0.12;
+            pointer-events: none;
+        }
+
+        .download-text h3 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: #ffd700;
+        }
+
+        .download-text p {
+            font-size: 0.92rem;
+            opacity: 0.9;
+            max-width: 450px;
+        }
+
+        .btn-download {
+            background-color: white;
+            color: #16a085;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-weight: 800;
+            font-size: 0.95rem;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+        }
+
+        /* PLAN CARDS */
+        .plans-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .plan-card {
+            background-color: var(--color-fondo-card);
+            border: 2px solid var(--color-borde);
+            border-radius: 12px;
+            padding: 24px;
+            cursor: pointer;
+            position: relative;
+            transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .plan-card:hover {
+            transform: translateY(-2px);
+            border-color: #3f3f5c;
+        }
+
+        .plan-card.selected {
+            border-color: var(--color-destacado);
+            box-shadow: rgba(255, 215, 0, 0.12) 0px 4px 25px 0px;
+        }
+
+        .plan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .plan-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .plan-badge {
+            background-color: var(--color-destacado);
+            color: #0A0A0A;
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 4px 12px;
+            border-radius: 20px;
+            text-transform: uppercase;
+        }
+
+        .plan-badge.trial {
+            background-color: var(--color-primario);
+            color: white;
+        }
+
+        .plan-price {
+            font-size: 1.9rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            color: #ffd700;
+        }
+
+        .plan-price .period {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--color-texto-secundario);
+        }
+
+        .plan-price .discount {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--color-primario);
+            margin-left: 10px;
+        }
+
+        .plan-features {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 10px;
+            padding-top: 16px;
+            border-top: 1px dashed var(--color-borde);
+        }
+
+        .plan-features li {
+            font-size: 0.88rem;
+            color: var(--color-texto-secundario);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .plan-features li::before {
+            content: "✓";
+            color: var(--color-primario);
+            font-weight: bold;
+        }
+
+        /* FORM CARD */
+        .form-card {
+            background-color: var(--color-fondo-card);
+            border: 1px solid var(--color-borde);
+            border-radius: 16px;
+            padding: 32px;
+        }
+
+        .form-section {
+            margin-bottom: 28px;
+        }
+
+        .form-section-header {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--color-primario);
+            margin-bottom: 18px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--color-texto-dark);
+        }
+
+        .form-group label .required {
+            color: var(--color-primario);
+        }
+
+        .form-control {
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--color-borde);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: white;
+            font-family: var(--fuente);
+            font-size: 0.95rem;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--color-primario);
+            box-shadow: rgba(26, 188, 156, 0.18) 0px 0px 8px 0px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        textarea.form-control {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--color-texto-secundario);
+        }
+
+        .checkbox-group input {
+            margin-top: 3px;
+            accent-color: var(--color-primario);
+        }
+
+        .checkbox-group a {
+            color: var(--color-primario);
+            text-decoration: none;
+        }
+
+        .checkbox-group a:hover {
+            text-decoration: underline;
+        }
+
+        /* ORDER SUMMARY */
+        .order-summary {
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--color-borde);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 24px;
+            margin-bottom: 24px;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            color: var(--color-texto-secundario);
+        }
+
+        .summary-row.total {
+            margin-bottom: 0;
+            padding-top: 10px;
+            border-top: 1px solid var(--color-borde);
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .summary-row.total #totalPrice {
+            color: var(--color-destacado);
+            font-size: 1.3rem;
+        }
+
+        /* SUBMIT BTN */
+        .btn-submit {
+            width: 100%;
+            background-color: var(--color-destacado);
+            color: #2c3e50;
+            border: none;
+            border-radius: 50px;
+            padding: 16px;
+            font-family: var(--fuente);
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.25);
+            transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            transform: scale(1.02);
+            background-color: #ffed4e;
+            box-shadow: 0 6px 25px rgba(255, 215, 0, 0.4);
+        }
+
+        .btn-submit:disabled {
+            background-color: #555;
+            color: #222;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        .security-notice {
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--color-texto-secundario);
+            margin-top: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .security-notice i {
+            color: var(--color-primario);
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-box {
+            background-color: var(--color-fondo-card);
+            border: 1px solid var(--color-destacado);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 480px;
+            padding: 40px;
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: rgba(255, 215, 0, 0.15) 0px 0px 40px 0px;
+        }
+
+        .modal-overlay.active .modal-box {
+            transform: scale(1);
+        }
+
+        .modal-icon {
+            font-size: 4rem;
+            color: var(--color-destacado);
+            margin-bottom: 20px;
+        }
+
+        .modal-box h2 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .modal-box p {
+            font-size: 0.95rem;
+            color: var(--color-texto-secundario);
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+
+        .btn-modal-close {
+            background-color: transparent;
+            color: var(--color-destacado);
+            border: 2px solid var(--color-destacado);
+            border-radius: 50px;
+            padding: 12px 32px;
+            font-family: var(--fuente);
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .btn-modal-close:hover {
+            background-color: var(--color-destacado);
+            color: #0A0A0A;
+        }
+
+        /* FOOTER */
+        .footer {
+            padding: 48px 0;
+            border-top: 1px solid var(--color-borde);
+            background-color: var(--color-fondo-dark);
+            text-align: center;
+        }
+
+        .footer p {
+            font-size: 0.9rem;
+            color: var(--color-texto-secundario);
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .checkout-grid {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-title-section h1 {
+                font-size: 2.2rem;
+            }
+
+            .download-box {
+                flex-direction: column;
+                text-align: center;
+                align-items: center;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+
+            .form-card {
+                padding: 24px;
+            }
+
+            .plan-features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container nav">
+            <a href="index.html" class="nav-logo">
+                <span class="icon">🏪</span> comerciantes.com.ar
+            </a>
+            <a href="index.html" class="btn-back">
+                <i class="bi bi-arrow-left"></i> Volver al Portal
+            </a>
+        </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="container main-content">
+        <div class="page-title-section">
+            <h1>Suscripción y Descarga de <span>VENDEMAX</span></h1>
+            <p>Conocé el software de control de stock y caja definitivo para tu comercio local.</p>
+        </div>
+
+        <!-- Panel de Descarga del Instalador -->
+        <div class="download-box">
+            <div class="download-text">
+                <h3>⚡ Descargar Instalador de VENDEMAX</h3>
+                <p>Descargá el archivo comprimido del sistema (`.rar`). Podés instalarlo en tu PC de inmediato y comenzar la prueba gratuita.</p>
+            </div>
+            <a href="downloads/VendeMax_Instalador.rar" class="btn-download">
+                <i class="bi bi-download"></i> Descargar Software (.rar)
+            </a>
+        </div>
+
+        <!-- Sección de Galería y Capturas del Sistema -->
+        <section class="system-gallery" style="margin-top: 40px; margin-bottom: 50px;">
+            <h2 class="section-title">
+                <i class="bi bi-display"></i> Capturas de Pantalla del Sistema
+            </h2>
+            <p style="color: var(--color-texto-secundario); margin-bottom: 24px; font-size: 1rem;">
+                Conocé la interfaz moderna y reactiva de VENDEMAX. Diseñada en modo oscuro para evitar la fatiga visual durante jornadas comerciales largas.
+            </p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+                <!-- Captura 1 -->
+                <div style="background-color: var(--color-fondo-card); border: 1px solid var(--color-borde); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                    <img src="assets/dashboard_screenshot.png" alt="Dashboard de VENDEMAX" style="width: 100%; height: auto; display: block; border-bottom: 1px solid var(--color-borde);">
+                    <div style="padding: 18px;">
+                        <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--color-destacado); margin-bottom: 8px;">Panel Principal y Estadísticas</h4>
+                        <p style="font-size: 0.88rem; color: var(--color-texto-secundario); line-height: 1.4;">
+                            Métricas en tiempo real, gráficos de ventas de los últimos 15 días y top de productos con mayor margen neto para una toma de decisiones inteligente.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Captura 2 -->
+                <div style="background-color: var(--color-fondo-card); border: 1px solid var(--color-borde); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                    <img src="assets/pos_screenshot.png" alt="Punto de Venta de VENDEMAX" style="width: 100%; height: auto; display: block; border-bottom: 1px solid var(--color-borde);">
+                    <div style="padding: 18px;">
+                        <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--color-destacado); margin-bottom: 8px;">Punto de Venta (POS) y Caja</h4>
+                        <p style="font-size: 0.88rem; color: var(--color-texto-secundario); line-height: 1.4;">
+                            Facturación ultra rápida optimizada para uso exclusivo con teclado, buscador de productos inteligente, lector de código de barras omnipresente e importador masivo de Excel.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Captura 3 -->
+                <div style="background-color: var(--color-fondo-card); border: 1px solid var(--color-borde); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                    <img src="assets/config_screenshot.png" alt="Configuración de Seguridad VENDEMAX" style="width: 100%; height: auto; display: block; border-bottom: 1px solid var(--color-borde);">
+                    <div style="padding: 18px;">
+                        <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--color-destacado); margin-bottom: 8px;">Seguridad Fiscal y Criptográfica</h4>
+                        <p style="font-size: 0.88rem; color: var(--color-texto-secundario); line-height: 1.4;">
+                            Configuración del certificado de AFIP y contraseña protegidos bajo cifrado militar local de Windows DPAPI. El sistema protege tus secretos en el disco de manera hermética.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="checkout-grid">
+            <!-- Columna Izquierda: Planes VENDEMAX -->
+            <div class="plans-column">
+                <h2 class="section-title">
+                    <i class="bi bi-tag-fill"></i> 1. Elegí tu Plan
+                </h2>
+
+                <div class="plans-container">
+                    <!-- Trial Freemium -->
+                    <div class="plan-card" data-plan="freemium" data-price="20000">
+                        <div class="plan-header">
+                            <span class="plan-name">Prueba Freemium</span>
+                            <span class="plan-badge trial">Prueba 15 Días</span>
+                        </div>
+                        <div class="plan-price">
+                            $20.000 <span class="period">Pago único de alta</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li>Licencia de prueba por 15 días</li>
+                            <li>Funciones básicas de stock y caja local</li>
+                            <li><strong>No incluye facturación AFIP</strong></li>
+                            <li><strong>No incluye cobros QR Mercado Pago</strong></li>
+                            <li>Instalación auto-guiada (1 PC)</li>
+                        </ul>
+                    </div>
+
+                    <!-- Premium Mensual -->
+                    <div class="plan-card" data-plan="premium-mensual" data-price="20000">
+                        <div class="plan-header">
+                            <span class="plan-name">Plan Premium Mensual</span>
+                            <span class="plan-badge">RECOMENDADO</span>
+                        </div>
+                        <div class="plan-price">
+                            $20.000 <span class="period">/ mes</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li><strong>Facturación Electrónica AFIP Ilimitada</strong></li>
+                            <li><strong>Integración con Cobros QR Mercado Pago</strong></li>
+                            <li><strong>Operación Offline / Contingencia (7 días)</strong></li>
+                            <li><strong>Seguridad Criptográfica Windows DPAPI</strong></li>
+                            <li>Importación inteligente de productos desde Excel</li>
+                            <li>1 PC activa por licencia</li>
+                        </ul>
+                    </div>
+
+                    <!-- Premium Anual -->
+                    <div class="plan-card" data-plan="premium-anual" data-price="200000">
+                        <div class="plan-header">
+                            <span class="plan-name">Plan Premium Anual</span>
+                            <span class="plan-badge">2 MESES GRATIS</span>
+                        </div>
+                        <div class="plan-price">
+                            $200.000 <span class="period">/ año</span>
+                            <span class="discount">Ahorrás $40.000</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li>Todo lo del Plan Premium Mensual</li>
+                            <li><strong>Descuento especial de 2 meses bonificados</strong></li>
+                            <li>Actualizaciones de software sin costo adicional</li>
+                            <li>Precio congelado por 12 meses</li>
+                        </ul>
+                    </div>
+
+                    <!-- Plan VIP -->
+                    <div class="plan-card" data-plan="vip" data-price="80000">
+                        <div class="plan-header">
+                            <span class="plan-name">Plan VIP Anual</span>
+                            <span class="plan-badge">COMPLETO</span>
+                        </div>
+                        <div class="plan-price">
+                            $80.000 <span class="period">/ año de oferta</span>
+                            <span class="discount">Ahorrás $120.000</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li>Todo el Plan Premium Anual</li>
+                            <li><strong>Hasta 3 PC activas vinculadas en red local</strong></li>
+                            <li>Asistencia remota para alta de AFIP / Mercado Pago</li>
+                            <li>Migración gratuita de su base de datos anterior</li>
+                            <li>Soporte técnico prioritario 24/7</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Formulario de Licencia -->
+            <div class="form-column">
+                <h2 class="section-title">
+                    <i class="bi bi-key-fill"></i> 2. Registrar Licencia
+                </h2>
+
+                <div class="form-card">
+                    <form id="subscriptionForm">
+                        <!-- Datos del Negocio -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <i class="bi bi-shop"></i> Datos del Comercio
+                            </div>
+
+                            <div class="form-group">
+                                <label>Nombre del Comercio <span class="required">*</span></label>
+                                <input type="text" class="form-control" name="businessName" required placeholder="Ej: Kiosco Belgrano o Almacén Los Primos">
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Rubro Principal <span class="required">*</span></label>
+                                    <select class="form-control" name="category" required>
+                                        <option value="">Seleccionar...</option>
+                                        <option value="comerciantes">Comerciantes / Tiendas</option>
+                                        <option value="gastronomia">Gastronomía / Kioscos</option>
+                                        <option value="agro">Agro y Semillería</option>
+                                        <option value="servicios">Servicios Generales</option>
+                                        <option value="indumentaria">Indumentaria & Tiendas</option>
+                                        <option value="otros">Otros Rubros</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Teléfono de Contacto <span class="required">*</span></label>
+                                    <input type="tel" class="form-control" name="phone" required placeholder="Ej: 3447-456789">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Dirección Física <span class="required">*</span></label>
+                                <input type="text" class="form-control" name="address" required placeholder="Ej: 12 de Abril 123, Colón">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Descripción breve</label>
+                                <textarea class="form-control" name="description" placeholder="Contanos brevemente sobre tu negocio y por qué elegís VENDEMAX..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Datos del Titular -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <i class="bi bi-person-fill"></i> Datos del Propietario
+                            </div>
+
+                            <div class="form-group">
+                                <label>Nombre Completo del Titular <span class="required">*</span></label>
+                                <input type="text" class="form-control" name="ownerName" required placeholder="Ej: Carlos Angeloni">
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Email (Clave de Activación) <span class="required">*</span></label>
+                                    <input type="email" class="form-control" name="email" required placeholder="correo@ejemplo.com">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>DNI / CUIT <span class="required">*</span></label>
+                                    <input type="text" class="form-control" name="dni" required placeholder="Ej: 20-30456789-9">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Redes (Opcional) -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <i class="bi bi-link-45deg"></i> Redes Sociales (Opcional)
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>WhatsApp Comercial</label>
+                                    <input type="tel" class="form-control" name="whatsapp" placeholder="Ej: 5493447456789">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Instagram (@cuenta)</label>
+                                    <input type="text" class="form-control" name="instagram" placeholder="Ej: @tunegocio">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Términos -->
+                        <label class="checkbox-group">
+                            <input type="checkbox" name="terms" required>
+                            <span>Acepto la licencia de uso comercial de VENDEMAX y los términos del portal. <span class="required">*</span></span>
+                        </label>
+
+                        <label class="checkbox-group">
+                            <input type="checkbox" name="newsletter" checked>
+                            <span>Quiero recibir actualizaciones de software y novedades comerciales.</span>
+                        </label>
+
+                        <!-- Resumen -->
+                        <div class="order-summary">
+                            <div class="summary-row">
+                                <span>Plan de Licencia:</span>
+                                <span id="selectedPlan" style="font-weight: 700; color: white;">Ninguno</span>
+                            </div>
+                            <div class="summary-row total">
+                                <span>Total a abonar:</span>
+                                <span id="totalPrice">$0</span>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button type="submit" class="btn-submit" id="submitBtn" disabled>
+                            Confirmar Suscripción
+                        </button>
+
+                        <div class="security-notice">
+                            <i class="bi bi-shield-lock-fill"></i> Suscripción cifrada mediante firma digital SSL/HMAC.
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de Contacto y Soporte -->
+        <section class="support-section" style="margin-top: 50px; padding: 32px; background: linear-gradient(135deg, #181827 0%, #10101d 100%); border: 1px solid var(--color-borde); border-radius: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
+            <h2 style="font-size: 1.6rem; font-weight: 700; color: white; margin-bottom: 12px;">
+                ¿Tenés dudas o necesitás asistencia personalizada?
+            </h2>
+            <p style="color: var(--color-texto-secundario); max-width: 600px; margin: 0 auto 24px auto; font-size: 0.95rem; line-height: 1.5;">
+                Comunicate de inmediato con nuestro equipo de soporte técnico para ayudarte con la instalación, configuración del certificado AFIP o evacuación de consultas comerciales.
+            </p>
+            
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px;">
+                <!-- WhatsApp Button -->
+                <a href="https://wa.me/5492473468486" target="_blank" style="background-color: #25D366; color: white; border-radius: 50px; font-weight: 700; font-size: 0.95rem; padding: 14px 28px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: 0 4px 15px rgba(37,211,102,0.3);">
+                    <i class="bi bi-whatsapp" style="font-size: 1.2rem;"></i> Contactar por WhatsApp
+                </a>
+                
+                <!-- Email Button -->
+                <a href="mailto:contacto.programadorgs@gmail.com" style="background-color: var(--color-primario); color: white; border-radius: 50px; font-weight: 700; font-size: 0.95rem; padding: 14px 28px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: 0 4px 15px rgba(26,188,156,0.3);">
+                    <i class="bi bi-envelope-fill" style="font-size: 1.1rem;"></i> Enviar un E-Mail
+                </a>
+            </div>
+            
+            <p style="font-size: 0.8rem; color: var(--color-texto-secundario); margin-top: 18px; font-family: monospace;">
+                WhatsApp: +54 9 2473 468486 | Email: contacto.programadorgs@gmail.com
+            </p>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 comerciantes.com.ar. Todos los derechos reservados. VENDEMAX es un producto desarrollado por ZenDev Group.</p>
+        </div>
+    </footer>
+
+    <!-- Éxito Modal -->
+    <div class="modal-overlay" id="successModal">
+        <div class="modal-box">
+            <div class="modal-icon">
+                <i class="bi bi-check-circle-fill"></i>
+            </div>
+            <h2>¡Suscripción Registrada con Éxito!</h2>
+            <p>Hemos recibido tus datos y los registramos en el servidor de licencias. En las próximas 24 horas te contactaremos para coordinar el cobro y activar tu clave de licencia.</p>
+            <p style="font-weight: bold; color: white;">¡Podés usar el email de registro para activar el software!</p>
+            <button class="btn-modal-close" onclick="closeModal()">Entendido</button>
+        </div>
+    </div>
+
+    <script src="vendemax.js"></script>
+</body>
+
+</html>
