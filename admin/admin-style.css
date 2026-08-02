@@ -522,6 +522,8 @@ body {
 .badge-plan.freemium { background: rgba(148, 163, 184, 0.15); color: var(--text-secondary); }
 .badge-plan.premium-mensual, .badge-plan.premium-anual { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
 .badge-plan.vip { background: rgba(245, 158, 11, 0.15); color: #ffd700; border: 1px solid #ffd700; }
+.badge-plan.gratuito { background: rgba(148, 163, 184, 0.15); color: var(--text-secondary); }
+.badge-plan.destacado, .badge-plan.destacado-mensual, .badge-plan.destacado-anual { background: rgba(16, 185, 129, 0.15); color: var(--success); }
 
 .badge-status {
     display: inline-block;
@@ -531,9 +533,10 @@ body {
     font-weight: 600;
     text-transform: capitalize;
 }
-.badge-status.activo { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.badge-status.activo, .badge-status.activa { background: rgba(16, 185, 129, 0.15); color: var(--success); }
 .badge-status.pendiente { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-.badge-status.suspendido { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.badge-status.suspendido, .badge-status.vencida { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.badge-status.cancelada { background: rgba(148, 163, 184, 0.15); color: var(--text-secondary); }
 
 /* ----------------------------------------------------
    FORMS & INPUTS

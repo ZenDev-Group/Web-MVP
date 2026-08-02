@@ -365,3 +365,4 @@ FodyWeavers.xsd
 # Local backend config and database
 backend/.env
 backend/database.sqlite
+.vercel

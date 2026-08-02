@@ -1,6 +1,8 @@
+// El backend vive en Railway, separado del sitio estático (Vercel) - por eso en producción
+// se apunta a la URL absoluta del backend en vez de una ruta relativa /api.
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
     ? 'http://localhost:3000/api'
-    : '/api';
+    : 'https://backend-production-196c.up.railway.app/api';
 
 // Check auth token
 function checkAuth() {
@@ -183,28 +185,6 @@ function setupUserProfile() {
     }
     if (avatarEl && email) {
         avatarEl.textContent = email.charAt(0).toUpperCase();
-    }
-
-    // Dynamic VendeMax sidebar menu item for main admin only
-    const sidebarMenu = document.querySelector('.sidebar-menu');
-    if (sidebarMenu && email === 'iamgustav.olivera@gmail.com') {
-        if (!document.getElementById('menu-vendemax')) {
-            const li = document.createElement('li');
-            li.id = 'menu-vendemax';
-            
-            const params = new URLSearchParams(window.location.search);
-            const view = params.get('view');
-            if (view === 'vendemax') {
-                li.classList.add('active');
-                // Remove active class from other elements
-                document.querySelectorAll('.sidebar-menu li').forEach(item => {
-                    if (item !== li) item.classList.remove('active');
-                });
-            }
-            
-            li.innerHTML = `<a href="listados.html?view=vendemax"><span>🖥️</span> VendeMax</a>`;
-            sidebarMenu.appendChild(li);
-        }
     }
 }
 

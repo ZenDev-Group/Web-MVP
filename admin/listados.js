@@ -39,17 +39,22 @@ function initView() {
                 <span>➕</span> Nueva Categoría
             </button>
         `;
-    } else if (currentView === 'vendemax') {
-        // Gustav olivera enforcement
-        const email = localStorage.getItem('adminEmail');
-        if (email !== 'iamgustav.olivera@gmail.com') {
-            alert('Acceso no autorizado. Este panel es exclusivo para el administrador principal de VendeMax.');
-            window.location.href = 'index.html';
-            return;
-        }
-        viewTitle.textContent = 'Suscripciones VendeMax';
-        viewSubtitle.textContent = 'Control de licencias comerciales y estados de activación del software de facturación';
-        statusFilter.style.display = 'inline-block';
+    } else if (currentView === 'suscripciones') {
+        viewTitle.textContent = 'Suscripciones de la Guía';
+        viewSubtitle.textContent = 'Vigencia real de cada comercio sobre un plan pago o gratuito';
+        actionButtonContainer.innerHTML = `
+            <button class="btn-primary-admin" onclick="openSubscriptionModal()">
+                <span>➕</span> Nueva Suscripción
+            </button>
+        `;
+    } else if (currentView === 'localidades') {
+        viewTitle.textContent = 'Localidades';
+        viewSubtitle.textContent = 'Cabecera, localidades y alrededores del partido de Colón';
+        actionButtonContainer.innerHTML = `
+            <button class="btn-primary-admin" onclick="openLocalidadModal()">
+                <span>➕</span> Nueva Localidad
+            </button>
+        `;
     }
 
     // Attach search and filter event listeners
@@ -66,7 +71,8 @@ async function fetchData() {
     else if (currentView === 'agrocomercios') endpoint = '/admin/agrocomercios';
     else if (currentView === 'cuentas') endpoint = '/admin/cuentas';
     else if (currentView === 'categorias') endpoint = '/admin/categorias';
-    else if (currentView === 'vendemax') endpoint = '/admin/vendemax/subscriptions';
+    else if (currentView === 'suscripciones') endpoint = '/admin/suscripciones';
+    else if (currentView === 'localidades') endpoint = '/admin/localidades';
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -95,7 +101,7 @@ function renderTable() {
     const filtered = listData.filter(item => {
         // Apply search
         let matchesSearch = false;
-        if (currentView === 'comercios' || currentView === 'agrocomercios' || currentView === 'vendemax') {
+        if (currentView === 'comercios' || currentView === 'agrocomercios') {
             matchesSearch = item.nombre_negocio.toLowerCase().includes(searchVal) ||
                             item.nombre_titular.toLowerCase().includes(searchVal) ||
                             item.email_titular.toLowerCase().includes(searchVal) ||
@@ -106,11 +112,16 @@ function renderTable() {
         } else if (currentView === 'categorias') {
             matchesSearch = item.nombre.toLowerCase().includes(searchVal) ||
                             item.slug.toLowerCase().includes(searchVal);
+        } else if (currentView === 'suscripciones') {
+            matchesSearch = item.nombre_negocio.toLowerCase().includes(searchVal) ||
+                            item.plan_nombre.toLowerCase().includes(searchVal);
+        } else if (currentView === 'localidades') {
+            matchesSearch = item.nombre.toLowerCase().includes(searchVal);
         }
 
-        // Apply status filter (relevant to commerce and vendemax)
+        // Apply status filter (relevant to commerce)
         let matchesStatus = true;
-        if ((currentView === 'comercios' || currentView === 'agrocomercios' || currentView === 'vendemax') && statusVal) {
+        if ((currentView === 'comercios' || currentView === 'agrocomercios') && statusVal) {
             matchesStatus = item.estado === statusVal;
         }
 
@@ -160,69 +171,6 @@ function renderTable() {
                 </td>
             </tr>
         `).join('');
-    } else if (currentView === 'vendemax') {
-        tableHead.innerHTML = `
-            <tr>
-                <th>Negocio VendeMax</th>
-                <th>Titular de Licencia</th>
-                <th>Plan Contratado</th>
-                <th>Clave de Licencia</th>
-                <th>Registro</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-            </tr>
-        `;
-        
-        tableBody.innerHTML = filtered.map(c => `
-            <tr>
-                <td>
-                    <div style="font-weight: 600; color: #1abc9c;">🖥️ ${escapeHTML(c.nombre_negocio)}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">📍 ${escapeHTML(c.direccion)}</div>
-                    ${c.descripcion ? `<div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; font-style: italic;">"${escapeHTML(c.descripcion)}"</div>` : ''}
-                </td>
-                <td>
-                    <div>${escapeHTML(c.nombre_titular)}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">✉ ${escapeHTML(c.email_titular)} | 📱 ${escapeHTML(c.telefono)}</div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary);">🪪 DNI: ${escapeHTML(c.dni_titular)}</div>
-                </td>
-                <td>
-                    <span class="badge-plan ${c.plan}">${c.plan}</span>
-                </td>
-                <td>
-                    ${c.licencia_clave ? `
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                            <div>
-                                🔑 <span style="font-family: monospace; font-weight: bold; background: rgba(26, 188, 156, 0.1); color: #1abc9c; padding: 0.1rem 0.35rem; border-radius: 4px; border: 1px dashed rgba(26, 188, 156, 0.3); font-size: 0.85rem;" title="Clave de Licencia">${escapeHTML(c.licencia_clave)}</span>
-                            </div>
-                            ${c.licencia_vencimiento ? `
-                                <div style="font-size: 0.7rem; color: var(--text-secondary);">
-                                    📅 Vence: ${new Date(c.licencia_vencimiento).toLocaleDateString('es-AR')}
-                                </div>
-                            ` : ''}
-                            ${c.machine_fingerprint ? `
-                                <div style="font-size: 0.7rem; color: #10b981; font-family: monospace;" title="PC Vinculada (Fingerprint)">
-                                    🖥️ ${escapeHTML(c.machine_fingerprint.substring(0, 15))}...
-                                </div>
-                            ` : `
-                                <div style="font-size: 0.7rem; color: var(--warning);">
-                                    ⚠️ PC no vinculada aún
-                                </div>
-                            `}
-                        </div>
-                    ` : `
-                        <span style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic;">Sin licencia (Inactivo)</span>
-                    `}
-                </td>
-                <td>${new Date(c.fecha_registro).toLocaleDateString('es-AR')}</td>
-                <td><span class="badge-status ${c.estado}">${c.estado}</span></td>
-                <td>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--bg-card); border: 1px solid var(--border-color);" onclick="openCommerceEdit(${c.id})">Editar</button>
-                        <button class="btn-logout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteCommerce(${c.id})">Eliminar</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
     } else if (currentView === 'cuentas') {
         tableHead.innerHTML = `
             <tr>
@@ -257,6 +205,50 @@ function renderTable() {
                 <td><strong>${escapeHTML(cat.nombre)}</strong></td>
             </tr>
         `).join('');
+    } else if (currentView === 'suscripciones') {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Comercio</th>
+                <th>Plan</th>
+                <th>Inicio</th>
+                <th>Vencimiento</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        `;
+
+        tableBody.innerHTML = filtered.map(s => `
+            <tr>
+                <td><strong>${escapeHTML(s.nombre_negocio)}</strong></td>
+                <td><span class="badge-plan ${escapeHTML(s.plan_slug)}">${escapeHTML(s.plan_nombre)}</span></td>
+                <td>${new Date(s.fecha_inicio).toLocaleDateString('es-AR')}</td>
+                <td>${new Date(s.fecha_fin).toLocaleDateString('es-AR')}</td>
+                <td><span class="badge-status ${s.estado}">${s.estado}</span></td>
+                <td>
+                    <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openSubscriptionModal(${s.comercio_id})">Renovar</button>
+                </td>
+            </tr>
+        `).join('');
+    } else if (currentView === 'localidades') {
+        tableHead.innerHTML = `
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th>Acciones</th>
+            </tr>
+        `;
+
+        tableBody.innerHTML = filtered.map(l => `
+            <tr>
+                <td>${l.id}</td>
+                <td><strong>${escapeHTML(l.nombre)}</strong></td>
+                <td>${escapeHTML(l.tipo)}</td>
+                <td>
+                    <button class="btn-logout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteLocalidad(${l.id})">Eliminar</button>
+                </td>
+            </tr>
+        `).join('');
     }
 
     if (filtered.length === 0) {
@@ -264,23 +256,18 @@ function renderTable() {
     }
 }
 
-// Delete commerce or subscription from table row
+// Delete commerce from table row
 async function deleteCommerce(id) {
-    const isVendeMax = currentView === 'vendemax';
-    const objectLabel = isVendeMax ? 'suscripción de VendeMax' : 'comercio';
-    
-    if (!confirm(`¿Estás seguro de que deseas eliminar este/a ${objectLabel} permanentemente? Se borrarán sus datos asociados.`)) return;
-
-    const endpoint = isVendeMax ? `/admin/vendemax/subscriptions/${id}` : `/admin/comercios/${id}`;
+    if (!confirm('¿Estás seguro de que deseas eliminar este comercio permanentemente? Se borrarán sus datos asociados.')) return;
 
     try {
-        const response = await fetch(`${API_URL}${endpoint}`, {
+        const response = await fetch(`${API_URL}/admin/comercios/${id}`, {
             method: 'DELETE',
             headers: getHeaders()
         });
 
         if (!response.ok) throw new Error('Error deleting commerce');
-        alert(`${isVendeMax ? 'Suscripción' : 'Comercio'} eliminado con éxito.`);
+        alert('Comercio eliminado con éxito.');
         fetchData();
     } catch (error) {
         console.error(error);
@@ -301,40 +288,253 @@ function openCommerceEdit(id) {
     document.getElementById('commPhone').value = item.telefono;
     document.getElementById('commAddress').value = item.direccion;
     document.getElementById('commDesc').value = item.descripcion || '';
-    
-    const isVendeMax = currentView === 'vendemax';
-    
-    // Manage agricultural checkbox visibility
-    const isAgroContainer = document.getElementById('commIsAgro').closest('.form-group');
-    if (isAgroContainer) {
-        if (isVendeMax) {
-            isAgroContainer.style.display = 'none';
-        } else {
-            isAgroContainer.style.display = 'block';
-            document.getElementById('commIsAgro').checked = item.es_agrocomercio === 1;
-        }
-    }
 
-    // Populate plans options dynamically based on target system
-    const planSelect = document.getElementById('commPlan');
-    if (isVendeMax) {
-        planSelect.innerHTML = `
-            <option value="freemium">Freemium (15 Días)</option>
-            <option value="premium-mensual">Premium Mensual</option>
-            <option value="premium-anual">Premium Anual</option>
-            <option value="vip">VIP Anual</option>
-        `;
-    } else {
-        planSelect.innerHTML = `
-            <option value="gratuito">Gratuito</option>
-            <option value="destacado">Destacado</option>
-        `;
-    }
-    planSelect.value = item.plan;
+    document.getElementById('commIsAgro').checked = item.es_agrocomercio === 1;
+
+    // Los planes del directorio se toman del catálogo real en `planes`,
+    // la misma fuente que usa la vista de Suscripciones.
+    poblarPlanesComercio(item.plan);
     document.getElementById('commStatus').value = item.estado;
+
+    document.getElementById('commLat').value = item.latitud || '';
+    document.getElementById('commLng').value = item.longitud || '';
+    document.getElementById('commHorarios').value = item.horarios || '';
+    document.getElementById('commFacebook').value = item.facebook || '';
+    document.getElementById('commSitioWeb').value = item.sitio_web || '';
+
+    poblarLocalidades(item.localidad_id);
+    cargarFotosComercio(item.id);
 
     document.getElementById('editCommerceModal').classList.add('active');
 }
+
+// ----------------------------------------------------
+// LOCALIDADES (para el select del modal de comercio + vista propia)
+// ----------------------------------------------------
+
+let localidadesCache = [];
+let planesCache = [];
+
+async function poblarPlanesComercio(selectedSlug) {
+    try {
+        if (planesCache.length === 0) {
+            const response = await fetch(`${API_URL}/admin/planes`, { headers: getHeaders() });
+            if (response.ok) planesCache = await response.json();
+        }
+        const select = document.getElementById('commPlan');
+        select.innerHTML = planesCache.map(p => `<option value="${p.slug}">${escapeHTML(p.nombre)}</option>`).join('');
+        select.value = selectedSlug || '';
+    } catch (error) {
+        console.error('Error loading planes:', error);
+    }
+}
+
+async function poblarLocalidades(selectedId) {
+    try {
+        if (localidadesCache.length === 0) {
+            const response = await fetch(`${API_URL}/admin/localidades`, { headers: getHeaders() });
+            if (response.ok) localidadesCache = await response.json();
+        }
+        const select = document.getElementById('commLocalidad');
+        select.innerHTML = '<option value="">Sin especificar</option>' +
+            localidadesCache.map(l => `<option value="${l.id}">${escapeHTML(l.nombre)}</option>`).join('');
+        select.value = selectedId || '';
+    } catch (error) {
+        console.error('Error loading localidades:', error);
+    }
+}
+
+function openLocalidadModal() {
+    document.getElementById('localidadForm').reset();
+    document.getElementById('localidadModal').classList.add('active');
+}
+
+function closeLocalidadModal() {
+    document.getElementById('localidadModal').classList.remove('active');
+}
+
+document.getElementById('localidadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nombre = document.getElementById('locNombre').value;
+    const tipo = document.getElementById('locTipo').value;
+
+    try {
+        const response = await fetch(`${API_URL}/admin/localidades`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ nombre, tipo })
+        });
+        if (!response.ok) throw new Error('Error creating localidad');
+        localidadesCache = []; // invalidate cache para que el modal de comercio la recargue
+        closeLocalidadModal();
+        alert('Localidad creada correctamente.');
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        alert('Error al crear localidad. Puede que el nombre ya exista.');
+    }
+});
+
+async function deleteLocalidad(id) {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta localidad?')) return;
+    try {
+        const response = await fetch(`${API_URL}/admin/localidades/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        if (!response.ok) throw new Error('Error deleting localidad');
+        localidadesCache = [];
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        alert('Error al eliminar.');
+    }
+}
+
+// ----------------------------------------------------
+// GALERÍA DE FOTOS DEL COMERCIO (dentro del modal de edición)
+// ----------------------------------------------------
+
+async function cargarFotosComercio(comercioId) {
+    const list = document.getElementById('commFotosList');
+    list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">Cargando fotos...</p>';
+    try {
+        const response = await fetch(`${API_URL}/admin/comercios/${comercioId}/fotos`, { headers: getHeaders() });
+        const fotos = await response.json();
+        renderFotosComercio(fotos);
+    } catch (error) {
+        console.error('Error loading fotos:', error);
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--danger);">Error al cargar las fotos.</p>';
+    }
+}
+
+function renderFotosComercio(fotos) {
+    const list = document.getElementById('commFotosList');
+    if (!fotos.length) {
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">Todavía no hay fotos cargadas.</p>';
+        return;
+    }
+    list.innerHTML = fotos.map(f => `
+        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+            <img src="${escapeHTML(f.url)}" alt="" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color);" onerror="this.style.opacity='0.3'">
+            <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(f.url)}</span>
+            ${f.es_portada
+                ? '<span class="badge-status activo">Portada</span>'
+                : `<button type="button" class="btn-primary-admin" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="marcarFotoPortada(${f.id})">Portada</button>`}
+            <button type="button" class="btn-logout" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="eliminarFotoComercio(${f.id})">Eliminar</button>
+        </div>
+    `).join('');
+}
+
+async function agregarFotoComercio() {
+    const comercioId = document.getElementById('editCommId').value;
+    const urlInput = document.getElementById('commNuevaFotoUrl');
+    const url = urlInput.value.trim();
+    if (!url) return;
+
+    try {
+        const response = await fetch(`${API_URL}/admin/comercios/${comercioId}/fotos`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ url })
+        });
+        if (!response.ok) throw new Error('Error adding photo');
+        urlInput.value = '';
+        cargarFotosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+        alert('Error al agregar la foto.');
+    }
+}
+
+async function marcarFotoPortada(fotoId) {
+    const comercioId = document.getElementById('editCommId').value;
+    try {
+        await fetch(`${API_URL}/admin/comercios/${comercioId}/fotos/${fotoId}`, {
+            method: 'PUT',
+            headers: getHeaders()
+        });
+        cargarFotosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function eliminarFotoComercio(fotoId) {
+    const comercioId = document.getElementById('editCommId').value;
+    if (!confirm('¿Eliminar esta foto?')) return;
+    try {
+        await fetch(`${API_URL}/admin/comercios/${comercioId}/fotos/${fotoId}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        cargarFotosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+// ----------------------------------------------------
+// SUSCRIPCIONES (alta y renovación manual)
+// ----------------------------------------------------
+
+async function openSubscriptionModal(preselectComercioId) {
+    document.getElementById('subscriptionForm').reset();
+
+    const comercioSelect = document.getElementById('subComercio');
+    const planSelect = document.getElementById('subPlan');
+    comercioSelect.innerHTML = '<option value="">Cargando...</option>';
+    planSelect.innerHTML = '<option value="">Cargando...</option>';
+
+    try {
+        const [comerciosRes, planesRes] = await Promise.all([
+            fetch(`${API_URL}/admin/comercios`, { headers: getHeaders() }),
+            fetch(`${API_URL}/admin/planes`, { headers: getHeaders() })
+        ]);
+        const comercios = await comerciosRes.json();
+        const planes = await planesRes.json();
+
+        comercioSelect.innerHTML = '<option value="">Seleccionar comercio...</option>' +
+            comercios.map(c => `<option value="${c.id}">${escapeHTML(c.nombre_negocio)}</option>`).join('');
+        planSelect.innerHTML = '<option value="">Seleccionar plan...</option>' +
+            planes.map(p => `<option value="${p.id}">${escapeHTML(p.nombre)} ($${Number(p.precio).toLocaleString('es-AR')})</option>`).join('');
+
+        if (preselectComercioId) comercioSelect.value = preselectComercioId;
+    } catch (error) {
+        console.error('Error loading comercios/planes:', error);
+    }
+
+    document.getElementById('subFechaInicio').value = new Date().toISOString().substring(0, 10);
+    document.getElementById('subscriptionModal').classList.add('active');
+}
+
+function closeSubscriptionModal() {
+    document.getElementById('subscriptionModal').classList.remove('active');
+}
+
+document.getElementById('subscriptionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = {
+        comercio_id: parseInt(document.getElementById('subComercio').value),
+        plan_id: parseInt(document.getElementById('subPlan').value),
+        fecha_inicio: document.getElementById('subFechaInicio').value || undefined
+    };
+
+    try {
+        const response = await fetch(`${API_URL}/admin/suscripciones`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error('Error creating subscription');
+        closeSubscriptionModal();
+        alert('Suscripción guardada correctamente.');
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        alert('Error al guardar la suscripción.');
+    }
+});
 
 function closeCommerceModal() {
     document.getElementById('editCommerceModal').classList.remove('active');
@@ -344,25 +544,25 @@ function closeCommerceModal() {
 document.getElementById('commerceForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('editCommId').value;
-    const isVendeMax = currentView === 'vendemax';
-    
+
     const data = {
         nombre_negocio: document.getElementById('commName').value,
         telefono: document.getElementById('commPhone').value,
         direccion: document.getElementById('commAddress').value,
         descripcion: document.getElementById('commDesc').value,
         plan: document.getElementById('commPlan').value,
-        estado: document.getElementById('commStatus').value
+        estado: document.getElementById('commStatus').value,
+        es_agrocomercio: document.getElementById('commIsAgro').checked ? 1 : 0,
+        localidad_id: document.getElementById('commLocalidad').value ? parseInt(document.getElementById('commLocalidad').value) : null,
+        latitud: document.getElementById('commLat').value || null,
+        longitud: document.getElementById('commLng').value || null,
+        horarios: document.getElementById('commHorarios').value,
+        facebook: document.getElementById('commFacebook').value,
+        sitio_web: document.getElementById('commSitioWeb').value
     };
 
-    if (!isVendeMax) {
-        data.es_agrocomercio = document.getElementById('commIsAgro').checked ? 1 : 0;
-    }
-
-    const endpoint = isVendeMax ? `/admin/vendemax/subscriptions/${id}` : `/admin/comercios/${id}`;
-
     try {
-        const response = await fetch(`${API_URL}${endpoint}`, {
+        const response = await fetch(`${API_URL}/admin/comercios/${id}`, {
             method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(data)
@@ -370,7 +570,7 @@ document.getElementById('commerceForm').addEventListener('submit', async (e) => 
 
         if (!response.ok) throw new Error('Error updating commerce');
         closeCommerceModal();
-        alert(`${isVendeMax ? 'Suscripción' : 'Comercio'} actualizado correctamente.`);
+        alert('Comercio actualizado correctamente.');
         fetchData();
     } catch (error) {
         console.error(error);

@@ -1,0 +1,5 @@
+backend/
+node_modules/
+*.sqlite
+.env
+.env.local

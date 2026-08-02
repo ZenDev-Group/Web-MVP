@@ -48,47 +48,14 @@ const requireAdmin = async (req, res, next) => {
   return res.status(403).json({ error: 'Permisos insuficientes.' });
 };
 
-// Middleware for checking VendeMax Admin authorization (restricted to iamgustav.olivera@gmail.com)
-const requireVendeMaxAdmin = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Acceso no autorizado. Se requiere token.' });
-  }
-
-  const token = authHeader.split(' ')[1];
-  
-  if (token === 'iamgustav.olivera@gmail.com') {
-    try {
-      const user = await dbGet('SELECT * FROM usuarios_cuentas WHERE email = ?', [token]);
-      if (user && user.rol === 'admin') {
-        return next();
-      }
-    } catch (err) {
-      // Ignore
-    }
-  }
-
-  return res.status(403).json({ 
-    error: 'Permisos insuficientes. Este panel es exclusivo para el administrador principal de VendeMax (iamgustav.olivera@gmail.com).' 
-  });
-};
-
-// Helper to create Mercado Pago Checkout Pro Preference
-async function crearPreferenciaMercadoPago(plan, precio, negocio, commerceId) {
+// Helper: crea una preferencia de Mercado Pago Checkout Pro para un plan de la guía.
+// El precio SIEMPRE sale de `plan.precio` (la base de datos) — nunca de un valor mandado por el cliente.
+async function crearPreferenciaGuia(plan, comercio) {
   const token = process.env.MP_ACCESS_TOKEN;
   if (!token) {
-    console.log("No MP Access Token configured, skipping preference creation.");
+    console.log('No MP Access Token configured, skipping preference creation.');
     return null;
   }
-
-  const planTitles = {
-    'freemium': 'VendeMax - Alta Plan Freemium (15 Días)',
-    'premium-mensual': 'VendeMax - Suscripción Premium Mensual',
-    'premium-anual': 'VendeMax - Suscripción Premium Anual',
-    'vip': 'VendeMax - Suscripción Anual VIP'
-  };
-
-  const title = planTitles[plan] || `VendeMax - Plan ${plan.toUpperCase()}`;
 
   try {
     const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
@@ -100,19 +67,20 @@ async function crearPreferenciaMercadoPago(plan, precio, negocio, commerceId) {
       body: JSON.stringify({
         items: [
           {
-            title: title,
+            title: `Guía de Comercios - ${plan.nombre}`,
             quantity: 1,
-            unit_price: parseFloat(precio),
+            unit_price: parseFloat(plan.precio),
             currency_id: 'ARS'
           }
         ],
         back_urls: {
-          success: 'https://comerciantes.com.ar/vendemax.html?status=success',
-          failure: 'https://comerciantes.com.ar/vendemax.html?status=failure',
-          pending: 'https://comerciantes.com.ar/vendemax.html?status=pending'
+          success: 'https://comerciantes.com.ar/suscripciones.html?status=success',
+          failure: 'https://comerciantes.com.ar/suscripciones.html?status=failure',
+          pending: 'https://comerciantes.com.ar/suscripciones.html?status=pending'
         },
         auto_return: 'approved',
-        external_reference: commerceId.toString()
+        // Prefijo "guia:" para que el webhook distinga estos avisos de otras integraciones futuras.
+        external_reference: `guia:${comercio.id}:${plan.id}`
       })
     });
 
@@ -122,8 +90,7 @@ async function crearPreferenciaMercadoPago(plan, precio, negocio, commerceId) {
       return null;
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error) {
     console.error('Error creating Mercado Pago preference:', error);
     return null;
@@ -132,11 +99,139 @@ async function crearPreferenciaMercadoPago(plan, precio, negocio, commerceId) {
 
 // ----------------------------------------------------
 // PUBLIC ENDPOINTS
-// --------------------------------------------------// POST /api/subscriptions - Register new directory commerce (Comerciantes)
+// ----------------------------------------------------
+
+// GET /api/planes - Catálogo público de planes de suscripción de la guía
+app.get('/api/planes', async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT * FROM planes WHERE activo = 1 ORDER BY prioridad ASC, precio ASC');
+    res.json(rows);
+  } catch (error) {
+    console.error('Error in GET /api/planes:', error);
+    res.status(500).json({ error: 'Error al obtener los planes.' });
+  }
+});
+
+// GET /api/categorias - Catálogo público de rubros (misma tabla que usa el admin)
+app.get('/api/categorias', async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT id, slug, nombre FROM categorias ORDER BY nombre ASC');
+    res.json(rows);
+  } catch (error) {
+    console.error('Error in GET /api/categorias:', error);
+    res.status(500).json({ error: 'Error al obtener categorías.' });
+  }
+});
+
+// GET /api/localidades - Catálogo público de localidades del partido
+app.get('/api/localidades', async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT id, nombre, tipo FROM localidades ORDER BY tipo ASC, nombre ASC');
+    res.json(rows);
+  } catch (error) {
+    console.error('Error in GET /api/localidades:', error);
+    res.status(500).json({ error: 'Error al obtener localidades.' });
+  }
+});
+
+// GET /api/comercios - Listado público de comercios activos (lo consume la web y, a futuro, la app)
+// Filtros opcionales: ?categoria=slug  ?localidad=id  ?agro=1|0  ?q=texto
+app.get('/api/comercios', async (req, res) => {
+  try {
+    const { categoria, localidad, agro, q } = req.query;
+
+    let sql = `
+      SELECT
+        c.id, c.nombre_negocio, c.descripcion, c.telefono, c.direccion,
+        c.whatsapp, c.instagram, c.facebook, c.sitio_web,
+        c.latitud, c.longitud, c.horarios, c.es_agrocomercio, c.plan,
+        cat.slug as categoria_slug, cat.nombre as categoria_nombre,
+        loc.id as localidad_id, loc.nombre as localidad_nombre,
+        (SELECT url FROM comercio_fotos WHERE comercio_id = c.id AND es_portada = 1 LIMIT 1) as foto_portada
+      FROM comercios c
+      LEFT JOIN categorias cat ON c.categoria_id = cat.id
+      LEFT JOIN localidades loc ON c.localidad_id = loc.id
+      WHERE c.estado = 'activo'
+    `;
+    const params = [];
+
+    if (categoria) {
+      sql += ' AND cat.slug = ?';
+      params.push(categoria);
+    }
+    if (localidad) {
+      sql += ' AND loc.id = ?';
+      params.push(localidad);
+    }
+    if (agro === '1' || agro === '0') {
+      sql += ' AND c.es_agrocomercio = ?';
+      params.push(agro === '1' ? 1 : 0);
+    }
+    if (q) {
+      sql += ' AND c.nombre_negocio LIKE ?';
+      params.push(`%${q}%`);
+    }
+
+    sql += ' ORDER BY c.nombre_negocio ASC';
+
+    const rows = await dbAll(sql, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error in GET /api/comercios:', error);
+    res.status(500).json({ error: 'Error al obtener los comercios.' });
+  }
+});
+
+// GET /api/comercios/:id - Detalle público de un comercio activo (ficha)
+app.get('/api/comercios/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const comercio = await dbGet(`
+      SELECT
+        c.id, c.nombre_negocio, c.descripcion, c.telefono, c.direccion,
+        c.whatsapp, c.instagram, c.facebook, c.sitio_web,
+        c.latitud, c.longitud, c.horarios, c.es_agrocomercio, c.plan,
+        cat.slug as categoria_slug, cat.nombre as categoria_nombre,
+        loc.id as localidad_id, loc.nombre as localidad_nombre
+      FROM comercios c
+      LEFT JOIN categorias cat ON c.categoria_id = cat.id
+      LEFT JOIN localidades loc ON c.localidad_id = loc.id
+      WHERE c.id = ? AND c.estado = 'activo'
+    `, [id]);
+
+    if (!comercio) {
+      return res.status(404).json({ error: 'Comercio no encontrado.' });
+    }
+
+    const fotos = await dbAll(
+      'SELECT url, orden, es_portada FROM comercio_fotos WHERE comercio_id = ? ORDER BY orden ASC',
+      [id]
+    );
+
+    // Plan activo (si tiene una suscripción vigente) - el frontend lo usa para decidir si
+    // muestra contacto directo (Sticky CTA Bar) o no, tal como especifica el plan de negocio.
+    const planInfo = await dbGet(`
+      SELECT p.slug as plan_slug, p.nombre as plan_nombre, p.prioridad, p.con_estadisticas
+      FROM suscripciones s
+      JOIN planes p ON s.plan_id = p.id
+      WHERE s.comercio_id = ? AND s.estado = 'activa'
+      ORDER BY s.fecha_fin DESC
+      LIMIT 1
+    `, [id]);
+
+    res.json({ ...comercio, fotos, plan_info: planInfo || null });
+  } catch (error) {
+    console.error('Error in GET /api/comercios/:id:', error);
+    res.status(500).json({ error: 'Error al obtener el comercio.' });
+  }
+});
+
+// POST /api/subscriptions - Register new directory commerce (Comerciantes)
 app.post('/api/subscriptions', async (req, res) => {
   try {
     const {
-      plan,
+      plan, // slug real del catálogo `planes` (ej: "gratuito", "destacado-mensual")
       businessName,
       category, // category slug
       phone,
@@ -151,6 +246,12 @@ app.post('/api/subscriptions', async (req, res) => {
 
     if (!businessName || !phone || !address || !ownerName || !email || !dni || !plan) {
       return res.status(400).json({ error: 'Faltan campos obligatorios para la suscripción.' });
+    }
+
+    // El plan tiene que existir en el catálogo real - nunca se confía en un precio mandado por el cliente
+    const planRow = await dbGet('SELECT * FROM planes WHERE slug = ? AND activo = 1', [plan]);
+    if (!planRow) {
+      return res.status(400).json({ error: 'El plan seleccionado no existe o no está disponible.' });
     }
 
     // Resolve category_id from category slug
@@ -216,10 +317,18 @@ app.post('/api/subscriptions', async (req, res) => {
 
     console.log(`New directory subscription registered: ${businessName} (ID: ${commerceId}), created JIRA verification task.`);
 
-    res.status(201).json({ 
-      success: true, 
+    // Si el plan es pago, se genera el link de Mercado Pago; si es gratuito, no hace falta cobrar nada.
+    let initPoint = null;
+    if (planRow.precio > 0) {
+      const preference = await crearPreferenciaGuia(planRow, { id: commerceId });
+      initPoint = preference ? preference.init_point : null;
+    }
+
+    res.status(201).json({
+      success: true,
       message: 'Suscripción de comercio registrada con éxito.',
-      commerceId
+      commerceId,
+      initPoint
     });
 
   } catch (error) {
@@ -228,88 +337,116 @@ app.post('/api/subscriptions', async (req, res) => {
   }
 });
 
-// POST /api/vendemax/subscriptions - Register new VendeMax subscription (SEPARATED)
-app.post('/api/vendemax/subscriptions', async (req, res) => {
-  try {
-    const {
-      plan,
-      businessName,
-      phone,
-      address,
-      description,
-      ownerName,
-      email,
-      dni,
-      whatsapp,
-      instagram
-    } = req.body;
+// Activa (o renueva) la suscripción de un comercio a un plan de la guía.
+// La misma lógica que usa POST /api/admin/suscripciones para el alta manual -
+// el webhook de Mercado Pago la reutiliza para el alta automática.
+async function activarSuscripcionGuia(comercioId, planRow, { monto, metodo, mpPaymentId, fechaInicio }) {
+  await dbRun("UPDATE suscripciones SET estado = 'cancelada' WHERE comercio_id = ? AND estado = 'activa'", [comercioId]);
 
-    if (!businessName || !phone || !address || !ownerName || !email || !dni || !plan) {
-      return res.status(400).json({ error: 'Faltan campos obligatorios para la suscripción de VendeMax.' });
+  const inicio = fechaInicio ? new Date(fechaInicio) : new Date();
+  const fin = new Date(inicio);
+  if (planRow.periodicidad === 'anual') {
+    fin.setFullYear(fin.getFullYear() + 1);
+  } else {
+    fin.setMonth(fin.getMonth() + 1);
+  }
+
+  const inicioStr = inicio.toISOString().replace('T', ' ').substring(0, 19);
+  const finStr = fin.toISOString().replace('T', ' ').substring(0, 19);
+
+  await dbRun(`
+    INSERT INTO suscripciones (comercio_id, plan_id, fecha_inicio, fecha_fin, estado, monto, metodo, mp_payment_id)
+    VALUES (?, ?, ?, ?, 'activa', ?, ?, ?)
+  `, [comercioId, planRow.id, inicioStr, finStr, monto, metodo, mpPaymentId || null]);
+
+  await dbRun("UPDATE comercios SET estado = 'activo', plan = ? WHERE id = ?", [planRow.slug, comercioId]);
+
+  await dbRun(`
+    INSERT INTO tareas_trabajo (titulo, descripcion, estado, prioridad, comercio_id, fecha_limite)
+    VALUES (?, ?, 'todo', 'media', ?, ?)
+  `, [
+    `Moderar contenido de comercio recién pagado (ID ${comercioId})`,
+    `El pago se confirmó automáticamente vía Mercado Pago y el comercio ya está activo y visible.\nRevisar fotos/descripción en las próximas 24-48hs.`,
+    comercioId,
+    new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+  ]);
+}
+
+// POST /api/webhooks/mercadopago - Confirmación automática de pago para suscripciones de la guía.
+// Nunca se confía en el cuerpo del aviso: siempre se re-consulta el pago real contra la API de Mercado Pago.
+app.post('/api/webhooks/mercadopago', async (req, res) => {
+  const topic = req.query.topic || req.query.type;
+  const paymentId = req.query.id || req.query['data.id'] || (req.body && req.body.data && req.body.data.id);
+
+  // Loguear el aviso crudo de inmediato, antes de cualquier otra cosa, para no perder nada.
+  const logResult = await dbRun(
+    'INSERT INTO webhooks_log (tipo, mp_id, payload, procesado) VALUES (?, ?, ?, 0)',
+    [topic || 'desconocido', paymentId ? paymentId.toString() : null, JSON.stringify({ query: req.query, body: req.body })]
+  );
+
+  // Siempre respondemos 200 rápido, incluso si no hay nada que procesar - así Mercado Pago no reintenta sin sentido.
+  res.sendStatus(200);
+
+  try {
+    if (topic !== 'payment' || !paymentId) return;
+
+    const token = process.env.MP_ACCESS_TOKEN;
+    if (!token) {
+      console.log('Webhook recibido pero no hay MP_ACCESS_TOKEN configurado, no se puede verificar el pago.');
+      return;
     }
 
-    // Insert VendeMax subscription with 'pendiente' status
-    const result = await dbRun(`
-      INSERT INTO vendemax_suscripciones (
-        nombre_negocio, telefono, direccion, descripcion, 
-        nombre_titular, email_titular, dni_titular, whatsapp, instagram, 
-        plan, estado
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      businessName,
-      phone,
-      address,
-      description || '',
-      ownerName,
-      email,
-      dni,
-      whatsapp || '',
-      instagram || '',
-      plan,
-      'pendiente'
-    ]);
-
-    const subscriptionId = result.lastID;
-
-    // AUTO-CREATE JIRA TASK for this new VendeMax registration
-    const taskTitle = `Verificar registro VendeMax: ${businessName}`;
-    const taskDesc = `Nueva suscripción de VendeMax registrada vía formulario web.\n` +
-      `- Plan: ${plan.toUpperCase()}\n` +
-      `- Titular: ${ownerName}\n` +
-      `- Email: ${email} | Tel: ${phone}\n` +
-      `- Ubicación: ${address}\n` +
-      `- Redes: WhatsApp (${whatsapp || 'N/A'}) | Instagram (${instagram || 'N/A'})\n\n` +
-      `Acción requerida: Verificar datos, coordinar pago del plan y cambiar estado a Activo para generar licencia comercial.`;
-
-    const priority = plan === 'vip' || plan === 'premium-anual' ? 'alta' : 'media';
-    const deadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours to complete
-
-    await dbRun(`
-      INSERT INTO tareas_trabajo (
-        titulo, descripcion, estado, prioridad, vendemax_suscripcion_id, fecha_limite
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `, [taskTitle, taskDesc, 'todo', priority, subscriptionId, deadline]);
-
-    console.log(`New VendeMax subscription registered: ${businessName} (ID: ${subscriptionId}), created JIRA verification task.`);
-
-    // Determine price dynamically based on VendeMax plan
-    let precio = 20000;
-    if (plan === 'premium-anual') precio = 200000;
-    else if (plan === 'vip') precio = 80000;
-
-    // Create Mercado Pago preference specifically for VendeMax
-    const preference = await crearPreferenciaMercadoPago(plan, precio, businessName, subscriptionId);
-
-    res.status(201).json({ 
-      success: true, 
-      message: 'Suscripción de VendeMax registrada con éxito.',
-      subscriptionId,
-      initPoint: preference ? preference.init_point : null
+    // Fuente de verdad: la API de Mercado Pago, nunca el body del aviso.
+    const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
     });
 
+    if (!paymentRes.ok) {
+      console.error(`No se pudo verificar el pago ${paymentId} contra la API de Mercado Pago (status ${paymentRes.status}).`);
+      return;
+    }
+
+    const payment = await paymentRes.json();
+    const externalReference = payment.external_reference || '';
+
+    if (!externalReference.startsWith('guia:')) {
+      // No es un pago de la guía (podría ser de otra integración futura) - no hacemos nada.
+      return;
+    }
+
+    if (payment.status !== 'approved') {
+      console.log(`Pago ${paymentId} con estado '${payment.status}', todavía no se activa nada.`);
+      return;
+    }
+
+    // Idempotencia: si ya procesamos este pago, no lo duplicamos.
+    const yaExiste = await dbGet('SELECT id FROM suscripciones WHERE mp_payment_id = ?', [paymentId.toString()]);
+    if (yaExiste) {
+      console.log(`Pago ${paymentId} ya había sido procesado, se ignora el aviso duplicado.`);
+      await dbRun('UPDATE webhooks_log SET procesado = 1 WHERE id = ?', [logResult.lastID]);
+      return;
+    }
+
+    const [, comercioIdStr, planIdStr] = externalReference.split(':');
+    const comercio = await dbGet('SELECT * FROM comercios WHERE id = ?', [comercioIdStr]);
+    const planRow = await dbGet('SELECT * FROM planes WHERE id = ?', [planIdStr]);
+
+    if (!comercio || !planRow) {
+      console.error(`Webhook: no se encontró el comercio ${comercioIdStr} o el plan ${planIdStr} de la referencia ${externalReference}.`);
+      return;
+    }
+
+    await activarSuscripcionGuia(comercio.id, planRow, {
+      monto: payment.transaction_amount,
+      metodo: 'mercado_pago',
+      mpPaymentId: paymentId.toString()
+    });
+
+    console.log(`Suscripción activada automáticamente por Mercado Pago: comercio ${comercio.id}, plan ${planRow.slug}.`);
+    await dbRun('UPDATE webhooks_log SET procesado = 1 WHERE id = ?', [logResult.lastID]);
+
   } catch (error) {
-    console.error('Error in POST /api/vendemax/subscriptions:', error);
-    res.status(500).json({ error: 'Error interno del servidor al registrar la suscripción de VendeMax.' });
+    console.error('Error procesando webhook de Mercado Pago:', error);
   }
 });
 
@@ -431,16 +568,25 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     const activeComercios = await dbGet("SELECT COUNT(*) as count FROM comercios WHERE estado = 'activo'");
     const totalCuentas = await dbGet('SELECT COUNT(*) as count FROM usuarios_cuentas');
     
-    // Revenue estimates (DIRECTORY ONLY: $5.000 for 'destacado' plan, $0 for others)
-    const activeMerchants = await dbAll("SELECT plan FROM comercios WHERE estado = 'activo'");
+    // Revenue real: se suma el precio de planes.precio para cada suscripción activa (no vencida),
+    // normalizando lo anual a su equivalente mensual para el estimado de "Ingresos Mensuales".
+    const now = new Date();
+    const activeSubs = await dbAll(`
+      SELECT s.fecha_fin, s.monto, p.precio, p.periodicidad
+      FROM suscripciones s
+      JOIN planes p ON s.plan_id = p.id
+      WHERE s.estado = 'activa'
+    `);
+
     let monthlyRevenue = 0;
     let totalSalesValue = 0;
-    activeMerchants.forEach(m => {
-      if (m.plan === 'destacado') {
-        monthlyRevenue += 5000;
-        totalSalesValue += 5000;
-      }
+    activeSubs.forEach(s => {
+      if (new Date(s.fecha_fin) < now) return; // vencida, no cuenta aunque el job diario no haya corrido todavía
+      const monto = s.monto !== undefined && s.monto !== null ? s.monto : s.precio;
+      totalSalesValue += monto;
+      monthlyRevenue += s.periodicidad === 'anual' ? monto / 12 : monto;
     });
+    monthlyRevenue = Math.round(monthlyRevenue);
 
     // Count tasks for directory only
     const tasksTodo = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'todo' AND vendemax_suscripcion_id IS NULL");
@@ -459,138 +605,6 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error in GET /api/admin/stats:', error);
     res.status(500).json({ error: 'Error al obtener métricas.' });
-  }
-});
-
-// GET /api/admin/vendemax/stats - Metrics for VendeMax (restricted to iamgustav.olivera@gmail.com)
-app.get('/api/admin/vendemax/stats', requireVendeMaxAdmin, async (req, res) => {
-  try {
-    const totalSubs = await dbGet('SELECT COUNT(*) as count FROM vendemax_suscripciones');
-    const pendingSubs = await dbGet("SELECT COUNT(*) as count FROM vendemax_suscripciones WHERE estado = 'pendiente'");
-    const activeSubs = await dbGet("SELECT COUNT(*) as count FROM vendemax_suscripciones WHERE estado = 'activo'");
-    
-    const activeVMerchants = await dbAll("SELECT plan FROM vendemax_suscripciones WHERE estado = 'activo'");
-    let monthlyRevenue = 0;
-    let totalSalesValue = 0;
-    activeVMerchants.forEach(m => {
-      if (m.plan === 'premium-mensual') {
-        monthlyRevenue += 20000;
-        totalSalesValue += 20000;
-      } else if (m.plan === 'premium-anual') {
-        totalSalesValue += 200000;
-      } else if (m.plan === 'vip') {
-        totalSalesValue += 80000;
-      } else if (m.plan === 'freemium') {
-        // Assume freemium has no revenue unless converted, or 15 days trial is free
-      }
-    });
-
-    const tasksTodo = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'todo' AND vendemax_suscripcion_id IS NOT NULL");
-    const tasksInProgress = await dbGet("SELECT COUNT(*) as count FROM tareas_trabajo WHERE estado = 'in_progress' AND vendemax_suscripcion_id IS NOT NULL");
-
-    res.json({
-      totalSubscriptions: totalSubs.count,
-      pendingSubscriptions: pendingSubs.count,
-      activeSubscriptions: activeSubs.count,
-      monthlyRevenue,
-      totalSalesValue,
-      tasksPending: tasksTodo.count + tasksInProgress.count
-    });
-  } catch (error) {
-    console.error('Error in GET /api/admin/vendemax/stats:', error);
-    res.status(500).json({ error: 'Error al obtener métricas de VendeMax.' });
-  }
-});
-
-// GET /api/admin/vendemax/subscriptions - List VendeMax subscriptions (restricted to iamgustav.olivera@gmail.com)
-app.get('/api/admin/vendemax/subscriptions', requireVendeMaxAdmin, async (req, res) => {
-  try {
-    const rows = await dbAll(`
-      SELECT s.*, l.clave as licencia_clave, l.estado as licencia_estado, l.fecha_vencimiento as licencia_vencimiento
-      FROM vendemax_suscripciones s
-      LEFT JOIN vendemax_licencias l ON s.id = l.suscripcion_id
-      ORDER BY s.fecha_registro DESC
-    `);
-    res.json(rows);
-  } catch (error) {
-    console.error('Error in GET /api/admin/vendemax/subscriptions:', error);
-    res.status(500).json({ error: 'Error al obtener suscripciones de VendeMax.' });
-  }
-});
-
-// PUT /api/admin/vendemax/subscriptions/:id - Edit VendeMax subscription and license (restricted to iamgustav.olivera@gmail.com)
-app.put('/api/admin/vendemax/subscriptions/:id', requireVendeMaxAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { nombre_negocio, telefono, direccion, descripcion, plan, estado } = req.body;
-
-  try {
-    const sub = await dbGet('SELECT * FROM vendemax_suscripciones WHERE id = ?', [id]);
-    if (!sub) {
-      return res.status(404).json({ error: 'Suscripción no encontrada.' });
-    }
-
-    await dbRun(`
-      UPDATE vendemax_suscripciones 
-      SET nombre_negocio = ?, telefono = ?, direccion = ?, descripcion = ?, plan = ?, estado = ?
-      WHERE id = ?
-    `, [
-      nombre_negocio || sub.nombre_negocio,
-      telefono || sub.telefono,
-      direccion || sub.direccion,
-      descripcion !== undefined ? descripcion : sub.descripcion,
-      plan || sub.plan,
-      estado || sub.estado,
-      id
-    ]);
-
-    const finalEstado = estado || sub.estado;
-    if (finalEstado === 'activo') {
-      const existingLicense = await dbGet('SELECT * FROM vendemax_licencias WHERE suscripcion_id = ?', [id]);
-      
-      let dias = 30;
-      const planFinal = plan || sub.plan;
-      if (planFinal === 'premium-anual') dias = 365;
-      else if (planFinal === 'vip') dias = 3650;
-      else if (planFinal === 'freemium') dias = 15;
-      
-      const fechaVencimiento = new Date();
-      fechaVencimiento.setDate(fechaVencimiento.getDate() + dias);
-      const fechaVencimientoStr = fechaVencimiento.toISOString().replace('T', ' ').substring(0, 19);
-
-      if (!existingLicense) {
-        const clave = generarClaveLicencia();
-        await dbRun(`
-          INSERT INTO vendemax_licencias (suscripcion_id, email, clave, estado, fecha_vencimiento)
-          VALUES (?, ?, ?, ?, ?)
-        `, [id, sub.email_titular, clave, 'activo', fechaVencimientoStr]);
-        console.log(`Generated new VendeMax license for ${sub.email_titular}: ${clave}`);
-      } else {
-        await dbRun(`
-          UPDATE vendemax_licencias 
-          SET fecha_vencimiento = ?, estado = 'activo'
-          WHERE id = ?
-        `, [fechaVencimientoStr, existingLicense.id]);
-      }
-    } else if (estado && estado !== 'activo' && sub.estado === 'activo') {
-      await dbRun("UPDATE vendemax_licencias SET estado = 'suspendido' WHERE suscripcion_id = ?", [id]);
-      console.log(`Suspended license for VendeMax subscription ID: ${id}`);
-    }
-
-    res.json({ success: true, message: 'Suscripción y licencia de VendeMax actualizadas correctamente.' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error al actualizar la suscripción de VendeMax.' });
-  }
-});
-
-// DELETE /api/admin/vendemax/subscriptions/:id - Delete VendeMax subscription (restricted to iamgustav.olivera@gmail.com)
-app.delete('/api/admin/vendemax/subscriptions/:id', requireVendeMaxAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await dbRun('DELETE FROM vendemax_suscripciones WHERE id = ?', [id]);
-    res.json({ success: true, message: 'Suscripción de VendeMax eliminada con éxito.' });
-  } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar suscripción.' });
   }
 });
 
@@ -641,7 +655,10 @@ app.get('/api/admin/agrocomercios', requireAdmin, async (req, res) => {
 // PUT /api/admin/comercios/:id
 app.put('/api/admin/comercios/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { nombre_negocio, telefono, direccion, descripcion, plan, estado, es_agrocomercio } = req.body;
+  const {
+    nombre_negocio, telefono, direccion, descripcion, plan, estado, es_agrocomercio,
+    localidad_id, latitud, longitud, horarios, facebook, sitio_web
+  } = req.body;
 
   try {
     // Check if commerce exists
@@ -651,8 +668,9 @@ app.put('/api/admin/comercios/:id', requireAdmin, async (req, res) => {
     }
 
     await dbRun(`
-      UPDATE comercios 
-      SET nombre_negocio = ?, telefono = ?, direccion = ?, descripcion = ?, plan = ?, estado = ?, es_agrocomercio = ?
+      UPDATE comercios
+      SET nombre_negocio = ?, telefono = ?, direccion = ?, descripcion = ?, plan = ?, estado = ?, es_agrocomercio = ?,
+          localidad_id = ?, latitud = ?, longitud = ?, horarios = ?, facebook = ?, sitio_web = ?
       WHERE id = ?
     `, [
       nombre_negocio || commerce.nombre_negocio,
@@ -662,6 +680,12 @@ app.put('/api/admin/comercios/:id', requireAdmin, async (req, res) => {
       plan || commerce.plan,
       estado || commerce.estado,
       es_agrocomercio !== undefined ? es_agrocomercio : commerce.es_agrocomercio,
+      localidad_id !== undefined ? (localidad_id || null) : commerce.localidad_id,
+      latitud !== undefined ? (latitud === '' ? null : latitud) : commerce.latitud,
+      longitud !== undefined ? (longitud === '' ? null : longitud) : commerce.longitud,
+      horarios !== undefined ? horarios : commerce.horarios,
+      facebook !== undefined ? facebook : commerce.facebook,
+      sitio_web !== undefined ? sitio_web : commerce.sitio_web,
       id
     ]);
 
@@ -741,6 +765,262 @@ app.post('/api/admin/categorias', requireAdmin, async (req, res) => {
     res.status(201).json({ success: true, message: 'Categoría creada.' });
   } catch (error) {
     res.status(500).json({ error: 'Error al crear categoría (puede que el slug ya exista).' });
+  }
+});
+
+// ----------------------------------------------------
+// LOCALIDADES ENDPOINTS (partido de Colón: cabecera, localidades, alrededores)
+// ----------------------------------------------------
+
+// GET /api/admin/localidades
+app.get('/api/admin/localidades', requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT * FROM localidades ORDER BY tipo ASC, nombre ASC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener localidades.' });
+  }
+});
+
+// POST /api/admin/localidades
+app.post('/api/admin/localidades', requireAdmin, async (req, res) => {
+  const { nombre, tipo } = req.body;
+  if (!nombre) {
+    return res.status(400).json({ error: 'Nombre requerido.' });
+  }
+
+  try {
+    await dbRun('INSERT INTO localidades (nombre, tipo) VALUES (?, ?)', [nombre, tipo || 'localidad']);
+    res.status(201).json({ success: true, message: 'Localidad creada.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear localidad (puede que el nombre ya exista).' });
+  }
+});
+
+// DELETE /api/admin/localidades/:id
+app.delete('/api/admin/localidades/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbRun('DELETE FROM localidades WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Localidad eliminada con éxito.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar localidad.' });
+  }
+});
+
+// ----------------------------------------------------
+// PLANES ENDPOINTS (catálogo de suscripción de la guía)
+// ----------------------------------------------------
+
+// GET /api/admin/planes
+app.get('/api/admin/planes', requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT * FROM planes ORDER BY prioridad ASC, precio ASC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener planes.' });
+  }
+});
+
+// PUT /api/admin/planes/:id
+app.put('/api/admin/planes/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, activo } = req.body;
+
+  try {
+    const plan = await dbGet('SELECT * FROM planes WHERE id = ?', [id]);
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan no encontrado.' });
+    }
+
+    await dbRun(`
+      UPDATE planes
+      SET nombre = ?, periodicidad = ?, precio = ?, fotos_max = ?, prioridad = ?, con_estadisticas = ?, activo = ?
+      WHERE id = ?
+    `, [
+      nombre || plan.nombre,
+      periodicidad || plan.periodicidad,
+      precio !== undefined ? precio : plan.precio,
+      fotos_max !== undefined ? fotos_max : plan.fotos_max,
+      prioridad !== undefined ? prioridad : plan.prioridad,
+      con_estadisticas !== undefined ? con_estadisticas : plan.con_estadisticas,
+      activo !== undefined ? activo : plan.activo,
+      id
+    ]);
+
+    res.json({ success: true, message: 'Plan actualizado correctamente.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar el plan.' });
+  }
+});
+
+// ----------------------------------------------------
+// SUSCRIPCIONES ENDPOINTS (vigencia real de cada comercio sobre un plan de la guía)
+// ----------------------------------------------------
+
+// GET /api/admin/suscripciones
+app.get('/api/admin/suscripciones', requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(`
+      SELECT s.*, c.nombre_negocio, p.nombre as plan_nombre, p.slug as plan_slug, p.periodicidad, p.precio
+      FROM suscripciones s
+      JOIN comercios c ON s.comercio_id = c.id
+      JOIN planes p ON s.plan_id = p.id
+      ORDER BY s.fecha_fin DESC
+    `);
+
+    // Marcar como vencida al vuelo si ya pasó la fecha_fin, aunque todavía no exista un job diario
+    const now = new Date();
+    const withComputedState = rows.map(r => {
+      if (r.estado === 'activa' && new Date(r.fecha_fin) < now) {
+        return { ...r, estado: 'vencida' };
+      }
+      return r;
+    });
+
+    res.json(withComputedState);
+  } catch (error) {
+    console.error('Error in GET /api/admin/suscripciones:', error);
+    res.status(500).json({ error: 'Error al obtener suscripciones.' });
+  }
+});
+
+// POST /api/admin/suscripciones - Alta o renovación manual de una suscripción
+app.post('/api/admin/suscripciones', requireAdmin, async (req, res) => {
+  const { comercio_id, plan_id, fecha_inicio, monto, metodo } = req.body;
+
+  if (!comercio_id || !plan_id) {
+    return res.status(400).json({ error: 'Comercio y plan son requeridos.' });
+  }
+
+  try {
+    const comercio = await dbGet('SELECT * FROM comercios WHERE id = ?', [comercio_id]);
+    if (!comercio) {
+      return res.status(404).json({ error: 'Comercio no encontrado.' });
+    }
+
+    const plan = await dbGet('SELECT * FROM planes WHERE id = ?', [plan_id]);
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan no encontrado.' });
+    }
+
+    // Cualquier suscripción activa previa de este comercio queda reemplazada
+    await dbRun("UPDATE suscripciones SET estado = 'cancelada' WHERE comercio_id = ? AND estado = 'activa'", [comercio_id]);
+
+    const inicio = fecha_inicio ? new Date(fecha_inicio) : new Date();
+    const fin = new Date(inicio);
+    if (plan.periodicidad === 'anual') {
+      fin.setFullYear(fin.getFullYear() + 1);
+    } else {
+      fin.setMonth(fin.getMonth() + 1);
+    }
+
+    const inicioStr = inicio.toISOString().replace('T', ' ').substring(0, 19);
+    const finStr = fin.toISOString().replace('T', ' ').substring(0, 19);
+
+    const result = await dbRun(`
+      INSERT INTO suscripciones (comercio_id, plan_id, fecha_inicio, fecha_fin, estado, monto, metodo)
+      VALUES (?, ?, ?, ?, 'activa', ?, ?)
+    `, [comercio_id, plan_id, inicioStr, finStr, monto !== undefined ? monto : plan.precio, metodo || 'manual']);
+
+    // El comercio queda activo y su campo de compatibilidad "plan" se sincroniza con el slug del plan nuevo
+    await dbRun("UPDATE comercios SET estado = 'activo', plan = ? WHERE id = ?", [plan.slug, comercio_id]);
+
+    res.status(201).json({ success: true, message: 'Suscripción creada correctamente.', suscripcionId: result.lastID });
+  } catch (error) {
+    console.error('Error in POST /api/admin/suscripciones:', error);
+    res.status(500).json({ error: 'Error al crear la suscripción.' });
+  }
+});
+
+// PUT /api/admin/suscripciones/:id - Corrección manual de fechas/estado
+app.put('/api/admin/suscripciones/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { fecha_inicio, fecha_fin, estado, monto } = req.body;
+
+  try {
+    const sub = await dbGet('SELECT * FROM suscripciones WHERE id = ?', [id]);
+    if (!sub) {
+      return res.status(404).json({ error: 'Suscripción no encontrada.' });
+    }
+
+    await dbRun(`
+      UPDATE suscripciones
+      SET fecha_inicio = ?, fecha_fin = ?, estado = ?, monto = ?
+      WHERE id = ?
+    `, [
+      fecha_inicio ? new Date(fecha_inicio).toISOString().replace('T', ' ').substring(0, 19) : sub.fecha_inicio,
+      fecha_fin ? new Date(fecha_fin).toISOString().replace('T', ' ').substring(0, 19) : sub.fecha_fin,
+      estado || sub.estado,
+      monto !== undefined ? monto : sub.monto,
+      id
+    ]);
+
+    res.json({ success: true, message: 'Suscripción actualizada correctamente.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar la suscripción.' });
+  }
+});
+
+// ----------------------------------------------------
+// COMERCIO FOTOS ENDPOINTS (galería pública, por URL)
+// ----------------------------------------------------
+
+// GET /api/admin/comercios/:id/fotos
+app.get('/api/admin/comercios/:id/fotos', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const rows = await dbAll('SELECT * FROM comercio_fotos WHERE comercio_id = ? ORDER BY orden ASC', [id]);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener las fotos del comercio.' });
+  }
+});
+
+// POST /api/admin/comercios/:id/fotos
+app.post('/api/admin/comercios/:id/fotos', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { url } = req.body;
+
+  if (!url) {
+    return res.status(400).json({ error: 'La URL de la foto es requerida.' });
+  }
+
+  try {
+    const countRow = await dbGet('SELECT COUNT(*) as count FROM comercio_fotos WHERE comercio_id = ?', [id]);
+    const esPrimera = countRow.count === 0 ? 1 : 0;
+
+    const result = await dbRun(`
+      INSERT INTO comercio_fotos (comercio_id, url, orden, es_portada)
+      VALUES (?, ?, ?, ?)
+    `, [id, url, countRow.count, esPrimera]);
+
+    res.status(201).json({ success: true, fotoId: result.lastID });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al agregar la foto.' });
+  }
+});
+
+// PUT /api/admin/comercios/:id/fotos/:fotoId - marcar como portada
+app.put('/api/admin/comercios/:id/fotos/:fotoId', requireAdmin, async (req, res) => {
+  const { id, fotoId } = req.params;
+  try {
+    await dbRun('UPDATE comercio_fotos SET es_portada = 0 WHERE comercio_id = ?', [id]);
+    await dbRun('UPDATE comercio_fotos SET es_portada = 1 WHERE id = ? AND comercio_id = ?', [fotoId, id]);
+    res.json({ success: true, message: 'Foto de portada actualizada.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al marcar la foto como portada.' });
+  }
+});
+
+// DELETE /api/admin/comercios/:id/fotos/:fotoId
+app.delete('/api/admin/comercios/:id/fotos/:fotoId', requireAdmin, async (req, res) => {
+  const { fotoId } = req.params;
+  try {
+    await dbRun('DELETE FROM comercio_fotos WHERE id = ?', [fotoId]);
+    res.json({ success: true, message: 'Foto eliminada.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar la foto.' });
   }
 });
 

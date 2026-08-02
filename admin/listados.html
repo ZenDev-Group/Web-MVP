@@ -22,6 +22,8 @@
                 <li id="menu-agrocomercios"><a href="listados.html?view=agrocomercios"><span>🌾</span> Agrocomercios</a></li>
                 <li id="menu-cuentas"><a href="listados.html?view=cuentas"><span>👥</span> Cuentas</a></li>
                 <li id="menu-categorias"><a href="listados.html?view=categorias"><span>📁</span> Categorías</a></li>
+                <li id="menu-suscripciones"><a href="listados.html?view=suscripciones"><span>💳</span> Suscripciones</a></li>
+                <li id="menu-localidades"><a href="listados.html?view=localidades"><span>📍</span> Localidades</a></li>
             </ul>
             <div class="sidebar-footer">
                 <button class="btn-logout" onclick="logout()"><span>🚪</span> Cerrar Sesión</button>
@@ -146,9 +148,111 @@
                     <input type="checkbox" id="commIsAgro" style="width: 18px; height: 18px; cursor: pointer;">
                     <label for="commIsAgro" style="margin-bottom: 0; cursor: pointer; user-select: none;">¿Es un Agrocomercio? (Se listará en sección agrícola)</label>
                 </div>
+
+                <!-- Campos de mapa y ficha pública -->
+                <div class="form-group" id="commLocalidadGroup">
+                    <label for="commLocalidad">Localidad</label>
+                    <select id="commLocalidad" class="form-input" style="cursor: pointer;">
+                        <option value="">Sin especificar</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="commLat">Latitud</label>
+                        <input type="text" id="commLat" class="form-input" placeholder="Ej: -33.8961">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="commLng">Longitud</label>
+                        <input type="text" id="commLng" class="form-input" placeholder="Ej: -61.1181">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="commHorarios">Horarios de atención</label>
+                    <input type="text" id="commHorarios" class="form-input" placeholder="Ej: Lun a Sáb 8 a 13 y 17 a 21hs">
+                </div>
+                <div class="form-group">
+                    <label for="commFacebook">Facebook</label>
+                    <input type="text" id="commFacebook" class="form-input" placeholder="https://facebook.com/...">
+                </div>
+                <div class="form-group">
+                    <label for="commSitioWeb">Sitio web</label>
+                    <input type="text" id="commSitioWeb" class="form-input" placeholder="https://...">
+                </div>
+
+                <!-- Galería de fotos -->
+                <div class="form-group" id="commFotosGroup" style="display: none;">
+                    <label>Fotos de la galería</label>
+                    <div id="commFotosList" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;"></div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="commNuevaFotoUrl" class="form-input" placeholder="Pegar URL de una foto...">
+                        <button type="button" class="btn-primary-admin" style="padding: 0.5rem 1rem; white-space: nowrap;" onclick="agregarFotoComercio()">Agregar</button>
+                    </div>
+                </div>
+
                 <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
                     <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeCommerceModal()">Cancelar</button>
                     <button type="submit" class="btn-primary-admin">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NUEVA LOCALIDAD -->
+    <div class="modal-admin" id="localidadModal">
+        <div class="modal-admin-content">
+            <div class="modal-admin-header">
+                <h2>Nueva Localidad</h2>
+                <button class="modal-close-btn" onclick="closeLocalidadModal()">✕</button>
+            </div>
+            <form id="localidadForm">
+                <div class="form-group">
+                    <label for="locNombre">Nombre</label>
+                    <input type="text" id="locNombre" class="form-input" placeholder="Ej: Pearson" required>
+                </div>
+                <div class="form-group">
+                    <label for="locTipo">Tipo</label>
+                    <select id="locTipo" class="form-input" style="cursor: pointer;">
+                        <option value="cabecera">Cabecera</option>
+                        <option value="localidad" selected>Localidad</option>
+                        <option value="alrededores">Alrededores / zona rural</option>
+                    </select>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeLocalidadModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary-admin">Crear Localidad</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NUEVA / RENOVAR SUSCRIPCIÓN -->
+    <div class="modal-admin" id="subscriptionModal">
+        <div class="modal-admin-content">
+            <div class="modal-admin-header">
+                <h2>Nueva Suscripción</h2>
+                <button class="modal-close-btn" onclick="closeSubscriptionModal()">✕</button>
+            </div>
+            <form id="subscriptionForm">
+                <div class="form-group">
+                    <label for="subComercio">Comercio</label>
+                    <select id="subComercio" class="form-input" style="cursor: pointer;" required>
+                        <option value="">Seleccionar comercio...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="subPlan">Plan</label>
+                    <select id="subPlan" class="form-input" style="cursor: pointer;" required>
+                        <option value="">Seleccionar plan...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="subFechaInicio">Fecha de inicio</label>
+                    <input type="date" id="subFechaInicio" class="form-input">
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: -0.5rem;">La fecha de vencimiento se calcula sola según la periodicidad del plan elegido.</p>
+                <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeSubscriptionModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary-admin">Guardar Suscripción</button>
                 </div>
             </form>
         </div>

@@ -157,6 +157,89 @@ async function initDb() {
     )
   `);
 
+  // 8. Create Localidades Table (partido de Colón: cabecera + localidades + alrededores)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS localidades (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT UNIQUE NOT NULL,
+      tipo TEXT NOT NULL DEFAULT 'localidad'
+    )
+  `);
+
+  // 9. Create Planes Table (catálogo de suscripción de la guía, separado del campo comercios.plan)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS planes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      nombre TEXT NOT NULL,
+      periodicidad TEXT NOT NULL DEFAULT 'mensual',
+      precio REAL NOT NULL DEFAULT 0,
+      fotos_max INTEGER NOT NULL DEFAULT 1,
+      prioridad INTEGER NOT NULL DEFAULT 0,
+      con_estadisticas INTEGER NOT NULL DEFAULT 0,
+      activo INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+
+  // 10. Create Suscripciones Table (instancia real de un comercio contratando un plan, con vigencia)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS suscripciones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER NOT NULL,
+      plan_id INTEGER NOT NULL,
+      fecha_inicio DATETIME NOT NULL,
+      fecha_fin DATETIME NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'activa',
+      monto REAL NOT NULL DEFAULT 0,
+      metodo TEXT NOT NULL DEFAULT 'manual',
+      mp_payment_id TEXT,
+      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE,
+      FOREIGN KEY (plan_id) REFERENCES planes (id)
+    )
+  `);
+
+  // 11. Create Comercio Fotos Table (galería pública, por URL)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS comercio_fotos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      orden INTEGER NOT NULL DEFAULT 0,
+      es_portada INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+
+  // 12. Create Webhooks Log Table (auditoría cruda de avisos de Mercado Pago, antes de procesarlos)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhooks_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo TEXT,
+      mp_id TEXT,
+      payload TEXT,
+      procesado INTEGER NOT NULL DEFAULT 0,
+      fecha_recepcion DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Add map/profile columns to comercios (migrations fallback, same pattern as vendemax_suscripcion_id above)
+  const comerciosNewColumns = [
+    'ALTER TABLE comercios ADD COLUMN localidad_id INTEGER',
+    'ALTER TABLE comercios ADD COLUMN latitud REAL',
+    'ALTER TABLE comercios ADD COLUMN longitud REAL',
+    'ALTER TABLE comercios ADD COLUMN horarios TEXT',
+    'ALTER TABLE comercios ADD COLUMN facebook TEXT',
+    'ALTER TABLE comercios ADD COLUMN sitio_web TEXT'
+  ];
+  for (const sql of comerciosNewColumns) {
+    try {
+      await dbRun(sql);
+    } catch (e) {
+      // Column already exists, safe to ignore
+    }
+  }
+
   console.log('Database tables verified/created successfully.');
 
   // Seed Categories if empty
@@ -210,6 +293,41 @@ async function initDb() {
       'admin'
     ]);
     console.log(`Seeded VendeMax admin user: ${gustavEmail}`);
+  }
+
+  // Seed default Localidades if empty (partido de Colón, Buenos Aires)
+  const locCount = await dbGet('SELECT COUNT(*) as count FROM localidades');
+  if (locCount.count === 0) {
+    const defaultLocalidades = [
+      { nombre: 'Colón', tipo: 'cabecera' },
+      { nombre: 'Pearson', tipo: 'localidad' },
+      { nombre: 'Sarasa', tipo: 'localidad' },
+      { nombre: 'El Arbolito', tipo: 'localidad' },
+      { nombre: 'Alrededores / zona rural', tipo: 'alrededores' }
+    ];
+    for (const loc of defaultLocalidades) {
+      await dbRun('INSERT INTO localidades (nombre, tipo) VALUES (?, ?)', [loc.nombre, loc.tipo]);
+    }
+    console.log('Seeded default localidades.');
+  }
+
+  // Seed default Planes if empty (montos de referencia, editables desde el panel admin)
+  const planCount = await dbGet('SELECT COUNT(*) as count FROM planes');
+  if (planCount.count === 0) {
+    const defaultPlanes = [
+      { slug: 'gratuito', nombre: 'Gratuito', periodicidad: 'mensual', precio: 0, fotos_max: 1, prioridad: 0, con_estadisticas: 0 },
+      { slug: 'destacado-mensual', nombre: 'Destacado Mensual', periodicidad: 'mensual', precio: 5000, fotos_max: 10, prioridad: 1, con_estadisticas: 0 },
+      { slug: 'destacado-anual', nombre: 'Destacado Anual', periodicidad: 'anual', precio: 50000, fotos_max: 10, prioridad: 1, con_estadisticas: 0 },
+      { slug: 'premium-mensual', nombre: 'Premium Mensual', periodicidad: 'mensual', precio: 9000, fotos_max: 20, prioridad: 2, con_estadisticas: 1 },
+      { slug: 'premium-anual', nombre: 'Premium Anual', periodicidad: 'anual', precio: 90000, fotos_max: 20, prioridad: 2, con_estadisticas: 1 }
+    ];
+    for (const p of defaultPlanes) {
+      await dbRun(`
+        INSERT INTO planes (slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, activo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `, [p.slug, p.nombre, p.periodicidad, p.precio, p.fotos_max, p.prioridad, p.con_estadisticas]);
+    }
+    console.log('Seeded default planes (guía de comercios).');
   }
 
   // Seed some dummy merchants/comercios if empty to showcase in lists (ONLY COMERCIANTES NOW)
