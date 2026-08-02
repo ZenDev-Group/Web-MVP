@@ -419,11 +419,13 @@ async function initDb() {
       }
     ];
 
+    const planDestacado = await dbGet("SELECT id, precio FROM planes WHERE slug = 'destacado-mensual'");
+
     for (const m of dummyMerchants) {
-      await dbRun(`
+      const result = await dbRun(`
         INSERT INTO comercios (
-          nombre_negocio, categoria_id, telefono, direccion, descripcion, 
-          nombre_titular, email_titular, dni_titular, whatsapp, instagram, 
+          nombre_negocio, categoria_id, telefono, direccion, descripcion,
+          nombre_titular, email_titular, dni_titular, whatsapp, instagram,
           plan, estado, es_agrocomercio
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
@@ -431,8 +433,64 @@ async function initDb() {
         m.nombre_titular, m.email_titular, m.dni_titular, m.whatsapp, m.instagram,
         m.plan, m.estado, m.es_agrocomercio
       ]);
+
+      // Los comercios de ejemplo marcados como "destacado" en el texto suelto (comercios.plan)
+      // necesitan ADEMÁS una suscripción real activa - sin esto, plan_info vuelve null desde
+      // GET /api/comercios/:id y la app/comerciantes.com.ar/single-comercio esconden el
+      // contacto directo aunque la cinta diga "Destacado" (inconsistencia real detectada
+      // al conectar single-comercio a datos reales).
+      if (m.plan !== 'gratuito' && planDestacado) {
+        const inicio = new Date();
+        const fin = new Date(inicio);
+        fin.setFullYear(fin.getFullYear() + 1);
+        await dbRun(`
+          INSERT INTO suscripciones (comercio_id, plan_id, fecha_inicio, fecha_fin, estado, monto, metodo)
+          VALUES (?, ?, ?, ?, 'activa', ?, 'manual')
+        `, [
+          result.lastID,
+          planDestacado.id,
+          inicio.toISOString().replace('T', ' ').substring(0, 19),
+          fin.toISOString().replace('T', ' ').substring(0, 19),
+          planDestacado.precio
+        ]);
+      }
     }
     console.log('Seeded default dummy merchants.');
+  }
+
+  // Backfill: comercios con plan pago (comercios.plan != 'gratuito') que no tienen
+  // ninguna suscripción activa real - sin esto, GET /api/comercios/:id devuelve
+  // plan_info: null y la app/comerciantes.com.ar/single-comercio esconden el contacto
+  // directo aunque la cinta "Destacado" (que solo mira comercios.plan) sí se muestre.
+  // Corre en cada arranque, no solo en una base nueva, para poder corregir bases ya
+  // existentes (ej. producción) sin tener que recrearlas.
+  const comerciosPagoSinSuscripcion = await dbAll(`
+    SELECT c.id FROM comercios c
+    WHERE c.plan != 'gratuito'
+      AND NOT EXISTS (
+        SELECT 1 FROM suscripciones s WHERE s.comercio_id = c.id AND s.estado = 'activa'
+      )
+  `);
+  if (comerciosPagoSinSuscripcion.length > 0) {
+    const planDestacadoBackfill = await dbGet("SELECT id, precio FROM planes WHERE slug = 'destacado-mensual'");
+    if (planDestacadoBackfill) {
+      for (const c of comerciosPagoSinSuscripcion) {
+        const inicio = new Date();
+        const fin = new Date(inicio);
+        fin.setFullYear(fin.getFullYear() + 1);
+        await dbRun(`
+          INSERT INTO suscripciones (comercio_id, plan_id, fecha_inicio, fecha_fin, estado, monto, metodo)
+          VALUES (?, ?, ?, ?, 'activa', ?, 'manual')
+        `, [
+          c.id,
+          planDestacadoBackfill.id,
+          inicio.toISOString().replace('T', ' ').substring(0, 19),
+          fin.toISOString().replace('T', ' ').substring(0, 19),
+          planDestacadoBackfill.precio
+        ]);
+      }
+      console.log(`Backfill: creadas ${comerciosPagoSinSuscripcion.length} suscripciones activas para comercios con plan pago que no tenían.`);
+    }
   }
 
   // Migrar los comercios reales de web1 (microemprendedores.com.ar) - solo una vez
