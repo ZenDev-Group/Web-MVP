@@ -12,6 +12,10 @@ const db = new sqlite3.Database(dbFile, (err) => {
   }
 });
 
+function normalizarTexto(texto) {
+  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
 // Helper functions for running queries with Promises
 const dbRun = (sql, params = []) => {
   return new Promise((resolve, reject) => {
@@ -429,6 +433,68 @@ async function initDb() {
       ]);
     }
     console.log('Seeded default dummy merchants.');
+  }
+
+  // Migrar los comercios reales de web1 (microemprendedores.com.ar) - solo una vez
+  const web1Marker = await dbGet("SELECT COUNT(*) as count FROM comercios WHERE nombre_titular = 'Migración web1'");
+  if (web1Marker.count === 0) {
+    const cats = await dbAll('SELECT id, slug, nombre FROM categorias');
+    const catBySlug = {};
+    cats.forEach(c => { catBySlug[normalizarTexto(c.slug)] = c.id; catBySlug[normalizarTexto(c.nombre)] = c.id; });
+    const catOtros = catBySlug['otros'];
+
+    let empresasWeb1 = [];
+    try {
+      empresasWeb1 = require('../data/web1-empresas.json');
+    } catch (e) {
+      console.log('No se encontró backend/data/web1-empresas.json, se omite la migración de web1.');
+    }
+
+    for (const emp of empresasWeb1) {
+      const categoriaId = catBySlug[normalizarTexto(emp.categoria || '')] || catOtros;
+      const descripcion = (emp.descripcionLarga && emp.descripcionLarga.trim())
+        || (emp.descripcionCorta && emp.descripcionCorta.trim())
+        || null;
+
+      const result = await dbRun(`
+        INSERT INTO comercios (
+          nombre_negocio, categoria_id, telefono, direccion, descripcion,
+          nombre_titular, email_titular, dni_titular, instagram, facebook,
+          plan, estado, es_agrocomercio
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        emp.nombre,
+        categoriaId,
+        (emp.telefono || '').trim(),
+        emp.direccion || '',
+        descripcion,
+        'Migración web1',
+        `web1-${emp.id}@migracion.local`,
+        '',
+        emp.instagram || null,
+        emp.facebook || null,
+        'gratuito',
+        'activo',
+        0
+      ]);
+
+      const comercioId = result.lastID;
+      const fotos = [];
+      if (emp.fotoPerfil) fotos.push(emp.fotoPerfil);
+      for (const url of (emp.fotos || [])) {
+        if (url && !fotos.includes(url)) fotos.push(url);
+      }
+      for (let i = 0; i < fotos.length; i++) {
+        await dbRun(
+          'INSERT INTO comercio_fotos (comercio_id, url, orden, es_portada) VALUES (?, ?, ?, ?)',
+          [comercioId, fotos[i], i, i === 0 ? 1 : 0]
+        );
+      }
+    }
+
+    if (empresasWeb1.length > 0) {
+      console.log(`Migrados ${empresasWeb1.length} comercios reales de web1.`);
+    }
   }
 
   // Seed VendeMax Suscripciones if empty
