@@ -226,6 +226,7 @@ function renderTable() {
                 <td><span class="badge-status ${s.estado}">${s.estado}</span></td>
                 <td>
                     <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openSubscriptionModal(${s.comercio_id})">Renovar</button>
+                    ${s.estado === 'activa' ? `<button class="btn-logout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; margin-left: 0.4rem;" onclick="cancelarSuscripcion(${s.id})">Cancelar</button>` : ''}
                 </td>
             </tr>
         `).join('');
@@ -510,6 +511,24 @@ async function openSubscriptionModal(preselectComercioId) {
 
 function closeSubscriptionModal() {
     document.getElementById('subscriptionModal').classList.remove('active');
+}
+
+async function cancelarSuscripcion(id) {
+    if (!confirm('¿Cancelar esta suscripción? El comercio vuelve al plan gratuito (pierde la ficha completa y el contacto directo).')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/admin/suscripciones/${id}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ estado: 'cancelada' })
+        });
+        if (!response.ok) throw new Error('Error cancelling subscription');
+        alert('Suscripción cancelada. El comercio vuelve al plan gratuito.');
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        alert('Error al cancelar la suscripción.');
+    }
 }
 
 document.getElementById('subscriptionForm').addEventListener('submit', async (e) => {

@@ -193,7 +193,8 @@ app.get('/api/comercios/:id', async (req, res) => {
         c.whatsapp, c.instagram, c.facebook, c.sitio_web,
         c.latitud, c.longitud, c.horarios, c.es_agrocomercio, c.plan,
         cat.slug as categoria_slug, cat.nombre as categoria_nombre,
-        loc.id as localidad_id, loc.nombre as localidad_nombre
+        loc.id as localidad_id, loc.nombre as localidad_nombre,
+        (SELECT url FROM comercio_fotos WHERE comercio_id = c.id AND es_portada = 1 LIMIT 1) as foto_portada
       FROM comercios c
       LEFT JOIN categorias cat ON c.categoria_id = cat.id
       LEFT JOIN localidades loc ON c.localidad_id = loc.id
@@ -203,11 +204,6 @@ app.get('/api/comercios/:id', async (req, res) => {
     if (!comercio) {
       return res.status(404).json({ error: 'Comercio no encontrado.' });
     }
-
-    const fotos = await dbAll(
-      'SELECT url, orden, es_portada FROM comercio_fotos WHERE comercio_id = ? ORDER BY orden ASC',
-      [id]
-    );
 
     // Plan activo (si tiene una suscripción vigente) - el frontend lo usa para decidir si
     // muestra contacto directo (Sticky CTA Bar) o no, tal como especifica el plan de negocio.
@@ -220,7 +216,28 @@ app.get('/api/comercios/:id', async (req, res) => {
       LIMIT 1
     `, [id]);
 
-    res.json({ ...comercio, fotos, plan_info: planInfo || null });
+    // La ficha completa (single-comercio / single-agro) es un beneficio exclusivo del Plan
+    // Premium (mensual o anual) - Gratuito y Destacado solo listan en la guía, sin ficha propia.
+    const esPremium = !!planInfo && (planInfo.plan_slug === 'premium-mensual' || planInfo.plan_slug === 'premium-anual');
+
+    if (!esPremium) {
+      return res.json({
+        id: comercio.id,
+        nombre_negocio: comercio.nombre_negocio,
+        categoria_slug: comercio.categoria_slug,
+        categoria_nombre: comercio.categoria_nombre,
+        localidad_nombre: comercio.localidad_nombre,
+        plan_info: planInfo || null,
+        acceso_restringido: true,
+      });
+    }
+
+    const fotos = await dbAll(
+      'SELECT url, orden, es_portada FROM comercio_fotos WHERE comercio_id = ? ORDER BY orden ASC',
+      [id]
+    );
+
+    res.json({ ...comercio, fotos, plan_info: planInfo, acceso_restringido: false });
   } catch (error) {
     console.error('Error in GET /api/comercios/:id:', error);
     res.status(500).json({ error: 'Error al obtener el comercio.' });
@@ -933,7 +950,7 @@ app.post('/api/admin/suscripciones', requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/suscripciones/:id - Corrección manual de fechas/estado
+// PUT /api/admin/suscripciones/:id - Corrección manual de fechas/estado (incluye cancelar)
 app.put('/api/admin/suscripciones/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { fecha_inicio, fecha_fin, estado, monto } = req.body;
@@ -944,6 +961,8 @@ app.put('/api/admin/suscripciones/:id', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Suscripción no encontrada.' });
     }
 
+    const nuevoEstado = estado || sub.estado;
+
     await dbRun(`
       UPDATE suscripciones
       SET fecha_inicio = ?, fecha_fin = ?, estado = ?, monto = ?
@@ -951,13 +970,30 @@ app.put('/api/admin/suscripciones/:id', requireAdmin, async (req, res) => {
     `, [
       fecha_inicio ? new Date(fecha_inicio).toISOString().replace('T', ' ').substring(0, 19) : sub.fecha_inicio,
       fecha_fin ? new Date(fecha_fin).toISOString().replace('T', ' ').substring(0, 19) : sub.fecha_fin,
-      estado || sub.estado,
+      nuevoEstado,
       monto !== undefined ? monto : sub.monto,
       id
     ]);
 
+    // El campo de compatibilidad comercios.plan tiene que reflejar la suscripción
+    // realmente vigente hoy - si se cancela/vence esta, o vuelve a quedar gratuito
+    // o toma el slug de otra activa (no debería haber más de una a la vez).
+    if (nuevoEstado !== 'activa') {
+      const otraActiva = await dbGet(
+        `SELECT p.slug FROM suscripciones s JOIN planes p ON s.plan_id = p.id
+         WHERE s.comercio_id = ? AND s.estado = 'activa' AND s.id != ?
+         ORDER BY s.fecha_fin DESC LIMIT 1`,
+        [sub.comercio_id, id]
+      );
+      await dbRun('UPDATE comercios SET plan = ? WHERE id = ?', [otraActiva ? otraActiva.slug : 'gratuito', sub.comercio_id]);
+    } else {
+      const plan = await dbGet('SELECT slug FROM planes WHERE id = ?', [sub.plan_id]);
+      await dbRun("UPDATE comercios SET plan = ?, estado = 'activo' WHERE id = ?", [plan.slug, sub.comercio_id]);
+    }
+
     res.json({ success: true, message: 'Suscripción actualizada correctamente.' });
   } catch (error) {
+    console.error('Error in PUT /api/admin/suscripciones/:id:', error);
     res.status(500).json({ error: 'Error al actualizar la suscripción.' });
   }
 });
