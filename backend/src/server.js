@@ -31,11 +31,9 @@ const requireAdmin = async (req, res, next) => {
   }
 
   const token = authHeader.split(' ')[1];
-  if (token === 'admin-session-token') {
-    return next();
-  }
 
-  // Double check in database users (for custom user logins)
+  // El token real es el email del usuario devuelto por /api/auth/login - se valida
+  // contra la base de cuentas en cada request, sin ningún bypass hardcodeado.
   try {
     const user = await dbGet('SELECT * FROM usuarios_cuentas WHERE email = ?', [token]);
     if (user && user.rol === 'admin') {
