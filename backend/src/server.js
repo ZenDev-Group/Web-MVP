@@ -208,7 +208,7 @@ app.get('/api/comercios/:id', async (req, res) => {
     // Plan activo (si tiene una suscripción vigente) - el frontend lo usa para decidir si
     // muestra contacto directo (Sticky CTA Bar) o no, tal como especifica el plan de negocio.
     const planInfo = await dbGet(`
-      SELECT p.slug as plan_slug, p.nombre as plan_nombre, p.prioridad, p.con_estadisticas
+      SELECT p.slug as plan_slug, p.nombre as plan_nombre, p.prioridad, p.con_estadisticas, p.acceso_ficha_completa
       FROM suscripciones s
       JOIN planes p ON s.plan_id = p.id
       WHERE s.comercio_id = ? AND s.estado = 'activa'
@@ -216,9 +216,10 @@ app.get('/api/comercios/:id', async (req, res) => {
       LIMIT 1
     `, [id]);
 
-    // La ficha completa (single-comercio / single-agro) es un beneficio exclusivo del Plan
-    // Premium (mensual o anual) - Gratuito y Destacado solo listan en la guía, sin ficha propia.
-    const esPremium = !!planInfo && (planInfo.plan_slug === 'premium-mensual' || planInfo.plan_slug === 'premium-anual');
+    // La ficha completa (single-comercio / single-agro) es un beneficio que se otorga por
+    // plan - se controla desde el catálogo de planes en el admin (columna acceso_ficha_completa),
+    // no por nombres de slug hardcodeados, para que un plan nuevo también pueda darla.
+    const esPremium = !!planInfo && planInfo.acceso_ficha_completa === 1;
 
     if (!esPremium) {
       return res.json({
@@ -839,10 +840,44 @@ app.get('/api/admin/planes', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/admin/planes - Crear un plan nuevo en el catálogo
+app.post('/api/admin/planes', requireAdmin, async (req, res) => {
+  const { slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, acceso_ficha_completa, activo } = req.body;
+
+  if (!slug || !nombre) {
+    return res.status(400).json({ error: 'Slug y nombre son requeridos.' });
+  }
+
+  try {
+    const result = await dbRun(`
+      INSERT INTO planes (slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, acceso_ficha_completa, activo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      slug.trim().toLowerCase(),
+      nombre,
+      periodicidad || 'mensual',
+      precio !== undefined ? precio : 0,
+      fotos_max !== undefined ? fotos_max : 1,
+      prioridad !== undefined ? prioridad : 0,
+      con_estadisticas ? 1 : 0,
+      acceso_ficha_completa ? 1 : 0,
+      activo !== undefined ? (activo ? 1 : 0) : 1
+    ]);
+
+    res.status(201).json({ success: true, message: 'Plan creado correctamente.', planId: result.lastID });
+  } catch (error) {
+    if (String(error.message).includes('UNIQUE')) {
+      return res.status(409).json({ error: 'Ya existe un plan con ese slug.' });
+    }
+    console.error('Error in POST /api/admin/planes:', error);
+    res.status(500).json({ error: 'Error al crear el plan.' });
+  }
+});
+
 // PUT /api/admin/planes/:id
 app.put('/api/admin/planes/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, activo } = req.body;
+  const { nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, acceso_ficha_completa, activo } = req.body;
 
   try {
     const plan = await dbGet('SELECT * FROM planes WHERE id = ?', [id]);
@@ -852,7 +887,7 @@ app.put('/api/admin/planes/:id', requireAdmin, async (req, res) => {
 
     await dbRun(`
       UPDATE planes
-      SET nombre = ?, periodicidad = ?, precio = ?, fotos_max = ?, prioridad = ?, con_estadisticas = ?, activo = ?
+      SET nombre = ?, periodicidad = ?, precio = ?, fotos_max = ?, prioridad = ?, con_estadisticas = ?, acceso_ficha_completa = ?, activo = ?
       WHERE id = ?
     `, [
       nombre || plan.nombre,
@@ -860,14 +895,41 @@ app.put('/api/admin/planes/:id', requireAdmin, async (req, res) => {
       precio !== undefined ? precio : plan.precio,
       fotos_max !== undefined ? fotos_max : plan.fotos_max,
       prioridad !== undefined ? prioridad : plan.prioridad,
-      con_estadisticas !== undefined ? con_estadisticas : plan.con_estadisticas,
-      activo !== undefined ? activo : plan.activo,
+      con_estadisticas !== undefined ? (con_estadisticas ? 1 : 0) : plan.con_estadisticas,
+      acceso_ficha_completa !== undefined ? (acceso_ficha_completa ? 1 : 0) : plan.acceso_ficha_completa,
+      activo !== undefined ? (activo ? 1 : 0) : plan.activo,
       id
     ]);
 
     res.json({ success: true, message: 'Plan actualizado correctamente.' });
   } catch (error) {
+    console.error('Error in PUT /api/admin/planes/:id:', error);
     res.status(500).json({ error: 'Error al actualizar el plan.' });
+  }
+});
+
+// DELETE /api/admin/planes/:id - Solo si ningún comercio lo usó nunca (histórico incluido)
+app.delete('/api/admin/planes/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const plan = await dbGet('SELECT * FROM planes WHERE id = ?', [id]);
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan no encontrado.' });
+    }
+
+    const enUso = await dbGet('SELECT COUNT(*) as count FROM suscripciones WHERE plan_id = ?', [id]);
+    if (enUso.count > 0) {
+      return res.status(409).json({
+        error: `No se puede eliminar: hay ${enUso.count} suscripción(es) (activas o históricas) usando este plan. Desactivalo en vez de eliminarlo.`
+      });
+    }
+
+    await dbRun('DELETE FROM planes WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Plan eliminado correctamente.' });
+  } catch (error) {
+    console.error('Error in DELETE /api/admin/planes/:id:', error);
+    res.status(500).json({ error: 'Error al eliminar el plan.' });
   }
 });
 

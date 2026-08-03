@@ -47,6 +47,14 @@ function initView() {
                 <span>➕</span> Nueva Suscripción
             </button>
         `;
+    } else if (currentView === 'planes') {
+        viewTitle.textContent = 'Planes de Suscripción';
+        viewSubtitle.textContent = 'Catálogo de planes que se pueden asignar a un comercio';
+        actionButtonContainer.innerHTML = `
+            <button class="btn-primary-admin" onclick="openPlanModal()">
+                <span>➕</span> Nuevo Plan
+            </button>
+        `;
     } else if (currentView === 'localidades') {
         viewTitle.textContent = 'Localidades';
         viewSubtitle.textContent = 'Cabecera, localidades y alrededores del partido de Colón';
@@ -72,6 +80,7 @@ async function fetchData() {
     else if (currentView === 'cuentas') endpoint = '/admin/cuentas';
     else if (currentView === 'categorias') endpoint = '/admin/categorias';
     else if (currentView === 'suscripciones') endpoint = '/admin/suscripciones';
+    else if (currentView === 'planes') endpoint = '/admin/planes';
     else if (currentView === 'localidades') endpoint = '/admin/localidades';
 
     try {
@@ -115,6 +124,9 @@ function renderTable() {
         } else if (currentView === 'suscripciones') {
             matchesSearch = item.nombre_negocio.toLowerCase().includes(searchVal) ||
                             item.plan_nombre.toLowerCase().includes(searchVal);
+        } else if (currentView === 'planes') {
+            matchesSearch = item.nombre.toLowerCase().includes(searchVal) ||
+                            item.slug.toLowerCase().includes(searchVal);
         } else if (currentView === 'localidades') {
             matchesSearch = item.nombre.toLowerCase().includes(searchVal);
         }
@@ -227,6 +239,38 @@ function renderTable() {
                 <td>
                     <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openSubscriptionModal(${s.comercio_id})">Renovar</button>
                     ${s.estado === 'activa' ? `<button class="btn-logout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; margin-left: 0.4rem;" onclick="cancelarSuscripcion(${s.id})">Cancelar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } else if (currentView === 'planes') {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Plan</th>
+                <th>Periodicidad</th>
+                <th>Precio</th>
+                <th>Fotos máx.</th>
+                <th>Ficha completa</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        `;
+
+        tableBody.innerHTML = filtered.map(p => `
+            <tr>
+                <td>
+                    <div style="font-weight: 600;">${escapeHTML(p.nombre)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);"><code>${escapeHTML(p.slug)}</code></div>
+                </td>
+                <td>${escapeHTML(p.periodicidad)}</td>
+                <td>$${Number(p.precio).toLocaleString('es-AR')}</td>
+                <td>${p.fotos_max}</td>
+                <td>${p.acceso_ficha_completa ? '<span class="badge-status activo">Sí</span>' : '<span class="badge-status">No</span>'}</td>
+                <td><span class="badge-status ${p.activo ? 'activo' : 'suspendido'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
+                <td>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--bg-card); border: 1px solid var(--border-color);" onclick="openPlanModal(${p.id})">Editar</button>
+                        <button class="btn-logout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="eliminarPlan(${p.id})">Eliminar</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
@@ -511,6 +555,108 @@ async function openSubscriptionModal(preselectComercioId) {
 
 function closeSubscriptionModal() {
     document.getElementById('subscriptionModal').classList.remove('active');
+}
+
+// ----------------------------------------------------
+// PLANES (catálogo de suscripción - crear, editar, eliminar)
+// ----------------------------------------------------
+
+function openPlanModal(id) {
+    document.getElementById('planForm').reset();
+    document.getElementById('editPlanId').value = '';
+    document.getElementById('planModalTitulo').textContent = 'Nuevo Plan';
+    document.getElementById('planSlug').disabled = false;
+    document.getElementById('planActivo').checked = true;
+
+    if (id) {
+        const plan = listData.find(p => p.id == id);
+        if (!plan) return;
+        document.getElementById('editPlanId').value = plan.id;
+        document.getElementById('planModalTitulo').textContent = `Editar Plan: ${plan.nombre}`;
+        document.getElementById('planSlug').value = plan.slug;
+        document.getElementById('planSlug').disabled = true; // el slug no se puede cambiar una vez creado
+        document.getElementById('planNombre').value = plan.nombre;
+        document.getElementById('planPeriodicidad').value = plan.periodicidad;
+        document.getElementById('planPrecio').value = plan.precio;
+        document.getElementById('planFotosMax').value = plan.fotos_max;
+        document.getElementById('planPrioridad').value = plan.prioridad;
+        document.getElementById('planConEstadisticas').checked = !!plan.con_estadisticas;
+        document.getElementById('planAccesoFichaCompleta').checked = !!plan.acceso_ficha_completa;
+        document.getElementById('planActivo').checked = !!plan.activo;
+    }
+
+    document.getElementById('planModal').classList.add('active');
+}
+
+function closePlanModal() {
+    document.getElementById('planModal').classList.remove('active');
+}
+
+document.getElementById('planForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const editId = document.getElementById('editPlanId').value;
+    const data = {
+        slug: document.getElementById('planSlug').value.trim(),
+        nombre: document.getElementById('planNombre').value,
+        periodicidad: document.getElementById('planPeriodicidad').value,
+        precio: parseFloat(document.getElementById('planPrecio').value) || 0,
+        fotos_max: parseInt(document.getElementById('planFotosMax').value) || 0,
+        prioridad: parseInt(document.getElementById('planPrioridad').value) || 0,
+        con_estadisticas: document.getElementById('planConEstadisticas').checked,
+        acceso_ficha_completa: document.getElementById('planAccesoFichaCompleta').checked,
+        activo: document.getElementById('planActivo').checked
+    };
+
+    try {
+        const response = await fetch(`${API_URL}/admin/planes${editId ? `/${editId}` : ''}`, {
+            method: editId ? 'PUT' : 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Error al guardar el plan');
+        closePlanModal();
+        alert('Plan guardado correctamente.');
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'Error al guardar el plan.');
+    }
+});
+
+async function eliminarPlan(id) {
+    if (!confirm('¿Eliminar este plan del catálogo? Esta acción no se puede deshacer.')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/admin/planes/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Error al eliminar el plan');
+        alert('Plan eliminado correctamente.');
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        if (error.message && error.message.includes('suscripci')) {
+            if (confirm(`${error.message}\n\n¿Querés desactivarlo en cambio? (deja de ofrecerse para nuevas suscripciones, pero conserva el historial)`)) {
+                try {
+                    const plan = listData.find(p => p.id == id);
+                    await fetch(`${API_URL}/admin/planes/${id}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ ...plan, activo: false })
+                    });
+                    alert('Plan desactivado.');
+                    fetchData();
+                } catch (e2) {
+                    alert('Error al desactivar el plan.');
+                }
+            }
+        } else {
+            alert(error.message || 'Error al eliminar el plan.');
+        }
+    }
 }
 
 async function cancelarSuscripcion(id) {

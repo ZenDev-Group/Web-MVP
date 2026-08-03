@@ -23,6 +23,7 @@
                 <li id="menu-cuentas"><a href="listados.html?view=cuentas"><span>👥</span> Cuentas</a></li>
                 <li id="menu-categorias"><a href="listados.html?view=categorias"><span>📁</span> Categorías</a></li>
                 <li id="menu-suscripciones"><a href="listados.html?view=suscripciones"><span>💳</span> Suscripciones</a></li>
+                <li id="menu-planes"><a href="listados.html?view=planes"><span>🏷️</span> Planes</a></li>
                 <li id="menu-localidades"><a href="listados.html?view=localidades"><span>📍</span> Localidades</a></li>
             </ul>
             <div class="sidebar-footer">
@@ -253,6 +254,66 @@
                 <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
                     <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeSubscriptionModal()">Cancelar</button>
                     <button type="submit" class="btn-primary-admin">Guardar Suscripción</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NUEVO / EDITAR PLAN -->
+    <div class="modal-admin" id="planModal">
+        <div class="modal-admin-content">
+            <div class="modal-admin-header">
+                <h2 id="planModalTitulo">Nuevo Plan</h2>
+                <button class="modal-close-btn" onclick="closePlanModal()">✕</button>
+            </div>
+            <form id="planForm">
+                <input type="hidden" id="editPlanId">
+                <div class="form-group">
+                    <label for="planSlug">Slug (único, no se puede cambiar después)</label>
+                    <input type="text" id="planSlug" class="form-input" placeholder="Ej: premium-trimestral" required>
+                </div>
+                <div class="form-group">
+                    <label for="planNombre">Nombre visible</label>
+                    <input type="text" id="planNombre" class="form-input" placeholder="Ej: Premium Trimestral" required>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="planPeriodicidad">Periodicidad</label>
+                        <select id="planPeriodicidad" class="form-input" style="cursor: pointer;">
+                            <option value="mensual">Mensual</option>
+                            <option value="anual">Anual</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="planPrecio">Precio (ARS)</label>
+                        <input type="number" id="planPrecio" class="form-input" min="0" step="1" value="0">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="planFotosMax">Fotos máximas en la ficha</label>
+                        <input type="number" id="planFotosMax" class="form-input" min="0" step="1" value="1">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="planPrioridad">Prioridad (orden en listados)</label>
+                        <input type="number" id="planPrioridad" class="form-input" min="0" step="1" value="0">
+                    </div>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="planConEstadisticas" style="width: 18px; height: 18px; cursor: pointer;">
+                    <label for="planConEstadisticas" style="margin-bottom: 0; cursor: pointer; user-select: none;">Incluye estadísticas de visitas/clicks</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="planAccesoFichaCompleta" style="width: 18px; height: 18px; cursor: pointer;">
+                    <label for="planAccesoFichaCompleta" style="margin-bottom: 0; cursor: pointer; user-select: none;">Da acceso a la ficha completa (single-comercio/single-agro)</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="planActivo" style="width: 18px; height: 18px; cursor: pointer;" checked>
+                    <label for="planActivo" style="margin-bottom: 0; cursor: pointer; user-select: none;">Activo (disponible para asignar en Suscripciones)</label>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closePlanModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary-admin">Guardar Plan</button>
                 </div>
             </form>
         </div>

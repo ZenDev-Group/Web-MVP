@@ -244,6 +244,14 @@ async function initDb() {
     }
   }
 
+  // Qué plan otorga la ficha completa (single-comercio/single-agro) ya no queda hardcodeado
+  // por slug en el backend - se controla desde el propio catálogo de planes en el admin.
+  try {
+    await dbRun('ALTER TABLE planes ADD COLUMN acceso_ficha_completa INTEGER NOT NULL DEFAULT 0');
+  } catch (e) {
+    // Column already exists, safe to ignore
+  }
+
   console.log('Database tables verified/created successfully.');
 
   // Seed Categories if empty
@@ -319,20 +327,26 @@ async function initDb() {
   const planCount = await dbGet('SELECT COUNT(*) as count FROM planes');
   if (planCount.count === 0) {
     const defaultPlanes = [
-      { slug: 'gratuito', nombre: 'Gratuito', periodicidad: 'mensual', precio: 0, fotos_max: 1, prioridad: 0, con_estadisticas: 0 },
-      { slug: 'destacado-mensual', nombre: 'Destacado Mensual', periodicidad: 'mensual', precio: 5000, fotos_max: 10, prioridad: 1, con_estadisticas: 0 },
-      { slug: 'destacado-anual', nombre: 'Destacado Anual', periodicidad: 'anual', precio: 50000, fotos_max: 10, prioridad: 1, con_estadisticas: 0 },
-      { slug: 'premium-mensual', nombre: 'Premium Mensual', periodicidad: 'mensual', precio: 9000, fotos_max: 20, prioridad: 2, con_estadisticas: 1 },
-      { slug: 'premium-anual', nombre: 'Premium Anual', periodicidad: 'anual', precio: 90000, fotos_max: 20, prioridad: 2, con_estadisticas: 1 }
+      { slug: 'gratuito', nombre: 'Gratuito', periodicidad: 'mensual', precio: 0, fotos_max: 1, prioridad: 0, con_estadisticas: 0, acceso_ficha_completa: 0 },
+      { slug: 'destacado-mensual', nombre: 'Destacado Mensual', periodicidad: 'mensual', precio: 5000, fotos_max: 10, prioridad: 1, con_estadisticas: 0, acceso_ficha_completa: 0 },
+      { slug: 'destacado-anual', nombre: 'Destacado Anual', periodicidad: 'anual', precio: 50000, fotos_max: 10, prioridad: 1, con_estadisticas: 0, acceso_ficha_completa: 0 },
+      { slug: 'premium-mensual', nombre: 'Premium Mensual', periodicidad: 'mensual', precio: 9000, fotos_max: 20, prioridad: 2, con_estadisticas: 1, acceso_ficha_completa: 1 },
+      { slug: 'premium-anual', nombre: 'Premium Anual', periodicidad: 'anual', precio: 90000, fotos_max: 20, prioridad: 2, con_estadisticas: 1, acceso_ficha_completa: 1 }
     ];
     for (const p of defaultPlanes) {
       await dbRun(`
-        INSERT INTO planes (slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, activo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-      `, [p.slug, p.nombre, p.periodicidad, p.precio, p.fotos_max, p.prioridad, p.con_estadisticas]);
+        INSERT INTO planes (slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, acceso_ficha_completa, activo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `, [p.slug, p.nombre, p.periodicidad, p.precio, p.fotos_max, p.prioridad, p.con_estadisticas, p.acceso_ficha_completa]);
     }
     console.log('Seeded default planes (guía de comercios).');
   }
+
+  // Backfill idempotente: en bases ya sembradas antes de que existiera esta columna,
+  // Premium Mensual/Anual deben quedar marcados como que otorgan ficha completa.
+  await dbRun(
+    "UPDATE planes SET acceso_ficha_completa = 1 WHERE slug IN ('premium-mensual', 'premium-anual') AND acceso_ficha_completa = 0"
+  );
 
   // Seed some dummy merchants/comercios if empty to showcase in lists (ONLY COMERCIANTES NOW)
   const commCount = await dbGet('SELECT COUNT(*) as count FROM comercios');
