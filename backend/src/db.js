@@ -227,6 +227,64 @@ async function initDb() {
     )
   `);
 
+  // 13. Create Comercio Productos Table (showcase de 4-6 productos/servicios de la landing Premium)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS comercio_productos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER NOT NULL,
+      nombre TEXT NOT NULL,
+      descripcion TEXT,
+      precio REAL,
+      foto_url TEXT,
+      orden INTEGER NOT NULL DEFAULT 0,
+      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+
+  // 14. Create Comercio Testimonios Table (reseñas de clientes, moderadas antes de publicarse)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS comercio_testimonios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER NOT NULL,
+      autor_nombre TEXT NOT NULL,
+      texto TEXT NOT NULL,
+      aprobado INTEGER NOT NULL DEFAULT 0,
+      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+
+  // 15. Create Reclamos de Perfil Table (embudo "¿Sos el dueño? Reclamá tu perfil" de la sección 5.1 del plan)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS reclamos_perfil (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER NOT NULL,
+      nombre_solicitante TEXT NOT NULL,
+      telefono_solicitante TEXT,
+      email_solicitante TEXT,
+      mensaje TEXT,
+      estado TEXT NOT NULL DEFAULT 'pendiente',
+      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+
+  // 16. Create Eventos Tracking Table (búsquedas y clics - alimenta el Panel de Estadísticas Premium
+  // y el reporte de "clics perdidos" para vender Premium a comercios gratuitos, sección 5.2 del plan)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS eventos_tracking (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER,
+      tipo TEXT NOT NULL,
+      termino_busqueda TEXT,
+      origen TEXT,
+      fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+  await dbRun('CREATE INDEX IF NOT EXISTS idx_eventos_tracking_comercio ON eventos_tracking (comercio_id, tipo, fecha)');
+
   // Add map/profile columns to comercios (migrations fallback, same pattern as vendemax_suscripcion_id above)
   const comerciosNewColumns = [
     'ALTER TABLE comercios ADD COLUMN localidad_id INTEGER',
@@ -234,7 +292,13 @@ async function initDb() {
     'ALTER TABLE comercios ADD COLUMN longitud REAL',
     'ALTER TABLE comercios ADD COLUMN horarios TEXT',
     'ALTER TABLE comercios ADD COLUMN facebook TEXT',
-    'ALTER TABLE comercios ADD COLUMN sitio_web TEXT'
+    'ALTER TABLE comercios ADD COLUMN sitio_web TEXT',
+    // Horario estructurado por día - habilita el badge "Abierto ahora / Cerrado" de la landing Premium
+    // (sección 3.B del plan). Se guarda además de `horarios` (texto libre), que sigue existiendo como
+    // fallback de visualización para comercios que no cargaron el horario estructurado.
+    // Formato: JSON con un array de 7 posiciones (0=domingo..6=sábado), cada una
+    // { cerrado: bool, apertura: "HH:MM", cierre: "HH:MM" } o null si no se cargó ese día.
+    'ALTER TABLE comercios ADD COLUMN horarios_json TEXT'
   ];
   for (const sql of comerciosNewColumns) {
     try {
@@ -248,6 +312,14 @@ async function initDb() {
   // por slug en el backend - se controla desde el propio catálogo de planes en el admin.
   try {
     await dbRun('ALTER TABLE planes ADD COLUMN acceso_ficha_completa INTEGER NOT NULL DEFAULT 0');
+  } catch (e) {
+    // Column already exists, safe to ignore
+  }
+
+  // Cuántos productos/servicios del showcase (sección 3.C del plan) puede cargar un comercio
+  // según su plan - mismo patrón que fotos_max, 0 significa que ese plan no tiene showcase.
+  try {
+    await dbRun('ALTER TABLE planes ADD COLUMN productos_max INTEGER NOT NULL DEFAULT 0');
   } catch (e) {
     // Column already exists, safe to ignore
   }
@@ -327,17 +399,17 @@ async function initDb() {
   const planCount = await dbGet('SELECT COUNT(*) as count FROM planes');
   if (planCount.count === 0) {
     const defaultPlanes = [
-      { slug: 'gratuito', nombre: 'Gratuito', periodicidad: 'mensual', precio: 0, fotos_max: 1, prioridad: 0, con_estadisticas: 0, acceso_ficha_completa: 0 },
-      { slug: 'destacado-mensual', nombre: 'Destacado Mensual', periodicidad: 'mensual', precio: 5000, fotos_max: 10, prioridad: 1, con_estadisticas: 0, acceso_ficha_completa: 0 },
-      { slug: 'destacado-anual', nombre: 'Destacado Anual', periodicidad: 'anual', precio: 50000, fotos_max: 10, prioridad: 1, con_estadisticas: 0, acceso_ficha_completa: 0 },
-      { slug: 'premium-mensual', nombre: 'Premium Mensual', periodicidad: 'mensual', precio: 9000, fotos_max: 20, prioridad: 2, con_estadisticas: 1, acceso_ficha_completa: 1 },
-      { slug: 'premium-anual', nombre: 'Premium Anual', periodicidad: 'anual', precio: 90000, fotos_max: 20, prioridad: 2, con_estadisticas: 1, acceso_ficha_completa: 1 }
+      { slug: 'gratuito', nombre: 'Gratuito', periodicidad: 'mensual', precio: 0, fotos_max: 1, prioridad: 0, con_estadisticas: 0, acceso_ficha_completa: 0, productos_max: 0 },
+      { slug: 'destacado-mensual', nombre: 'Destacado Mensual', periodicidad: 'mensual', precio: 5000, fotos_max: 10, prioridad: 1, con_estadisticas: 0, acceso_ficha_completa: 0, productos_max: 0 },
+      { slug: 'destacado-anual', nombre: 'Destacado Anual', periodicidad: 'anual', precio: 50000, fotos_max: 10, prioridad: 1, con_estadisticas: 0, acceso_ficha_completa: 0, productos_max: 0 },
+      { slug: 'premium-mensual', nombre: 'Premium Mensual', periodicidad: 'mensual', precio: 9000, fotos_max: 20, prioridad: 2, con_estadisticas: 1, acceso_ficha_completa: 1, productos_max: 6 },
+      { slug: 'premium-anual', nombre: 'Premium Anual', periodicidad: 'anual', precio: 90000, fotos_max: 20, prioridad: 2, con_estadisticas: 1, acceso_ficha_completa: 1, productos_max: 6 }
     ];
     for (const p of defaultPlanes) {
       await dbRun(`
-        INSERT INTO planes (slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, acceso_ficha_completa, activo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `, [p.slug, p.nombre, p.periodicidad, p.precio, p.fotos_max, p.prioridad, p.con_estadisticas, p.acceso_ficha_completa]);
+        INSERT INTO planes (slug, nombre, periodicidad, precio, fotos_max, prioridad, con_estadisticas, acceso_ficha_completa, productos_max, activo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `, [p.slug, p.nombre, p.periodicidad, p.precio, p.fotos_max, p.prioridad, p.con_estadisticas, p.acceso_ficha_completa, p.productos_max]);
     }
     console.log('Seeded default planes (guía de comercios).');
   }
@@ -346,6 +418,12 @@ async function initDb() {
   // Premium Mensual/Anual deben quedar marcados como que otorgan ficha completa.
   await dbRun(
     "UPDATE planes SET acceso_ficha_completa = 1 WHERE slug IN ('premium-mensual', 'premium-anual') AND acceso_ficha_completa = 0"
+  );
+
+  // Backfill idempotente equivalente para el showcase de productos: mismo criterio que fotos_max,
+  // Premium habilita hasta 6 productos/servicios (sección 3.C del plan de tarjetas/landing).
+  await dbRun(
+    "UPDATE planes SET productos_max = 6 WHERE slug IN ('premium-mensual', 'premium-anual') AND productos_max = 0"
   );
 
   // Seed some dummy merchants/comercios if empty to showcase in lists (ONLY COMERCIANTES NOW)

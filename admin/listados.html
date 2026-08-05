@@ -25,6 +25,8 @@
                 <li id="menu-suscripciones"><a href="listados.html?view=suscripciones"><span>💳</span> Suscripciones</a></li>
                 <li id="menu-planes"><a href="listados.html?view=planes"><span>🏷️</span> Planes</a></li>
                 <li id="menu-localidades"><a href="listados.html?view=localidades"><span>📍</span> Localidades</a></li>
+                <li id="menu-reclamos"><a href="listados.html?view=reclamos"><span>🙋</span> Reclamos de Perfil</a></li>
+                <li id="menu-estadisticas"><a href="listados.html?view=estadisticas"><span>📈</span> Clics Perdidos</a></li>
             </ul>
             <div class="sidebar-footer">
                 <button class="btn-logout" onclick="logout()"><span>🚪</span> Cerrar Sesión</button>
@@ -168,9 +170,16 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="commHorarios">Horarios de atención</label>
+                    <label for="commHorarios">Horarios de atención (texto libre, fallback si no se carga el horario estructurado)</label>
                     <input type="text" id="commHorarios" class="form-input" placeholder="Ej: Lun a Sáb 8 a 13 y 17 a 21hs">
                 </div>
+
+                <!-- Horario estructurado por día - habilita el badge "Abierto ahora / Cerrado" de la landing Premium -->
+                <div class="form-group">
+                    <label>Horario estructurado por día (para el badge "Abierto ahora / Cerrado")</label>
+                    <div id="commHorariosEstructurados" style="display: flex; flex-direction: column; gap: 0.4rem; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem;"></div>
+                </div>
+
                 <div class="form-group">
                     <label for="commFacebook">Facebook</label>
                     <input type="text" id="commFacebook" class="form-input" placeholder="https://facebook.com/...">
@@ -190,11 +199,50 @@
                     </div>
                 </div>
 
+                <!-- Showcase de productos/servicios (según productos_max del plan activo) -->
+                <div class="form-group" id="commProductosGroup" style="display: none;">
+                    <label>Showcase de productos/servicios (<span id="commProductosMax">0</span> máx. según el plan)</label>
+                    <div id="commProductosList" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;"></div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        <input type="text" id="commNuevoProdNombre" class="form-input" style="flex: 1; min-width: 120px;" placeholder="Nombre">
+                        <input type="text" id="commNuevoProdPrecio" class="form-input" style="width: 100px;" placeholder="Precio">
+                        <input type="text" id="commNuevoProdFoto" class="form-input" style="flex: 1; min-width: 120px;" placeholder="URL de foto (opcional)">
+                        <button type="button" class="btn-primary-admin" style="padding: 0.5rem 1rem; white-space: nowrap;" onclick="agregarProductoComercio()">Agregar</button>
+                    </div>
+                </div>
+
+                <!-- Testimonios (moderados, se publican solo si están aprobados) -->
+                <div class="form-group" id="commTestimoniosGroup" style="display: none;">
+                    <label>Testimonios de clientes</label>
+                    <div id="commTestimoniosList" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;"></div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        <input type="text" id="commNuevoTestiAutor" class="form-input" style="flex: 1; min-width: 120px;" placeholder="Nombre del cliente">
+                        <input type="text" id="commNuevoTestiTexto" class="form-input" style="flex: 2; min-width: 160px;" placeholder="Texto del testimonio">
+                        <button type="button" class="btn-primary-admin" style="padding: 0.5rem 1rem; white-space: nowrap;" onclick="agregarTestimonioComercio()">Agregar</button>
+                    </div>
+                </div>
+
                 <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
                     <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="closeCommerceModal()">Cancelar</button>
                     <button type="submit" class="btn-primary-admin">Guardar Cambios</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL: RECLAMO DE PERFIL (ver detalle) -->
+    <div class="modal-admin" id="reclamoModal">
+        <div class="modal-admin-content">
+            <div class="modal-admin-header">
+                <h2>Reclamo de Perfil</h2>
+                <button class="modal-close-btn" onclick="closeReclamoModal()">✕</button>
+            </div>
+            <div id="reclamoDetalle" style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.9rem;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+                <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--text-secondary); color: var(--text-secondary);" onclick="responderReclamo('rechazado')">Rechazar</button>
+                <button type="button" class="btn-logout" style="width: auto; border: 1px solid var(--border-color);" onclick="responderReclamo('contactado')">Marcar Contactado</button>
+                <button type="button" class="btn-primary-admin" onclick="responderReclamo('aprobado')">Aprobar</button>
+            </div>
         </div>
     </div>
 

@@ -236,10 +236,115 @@ app.get('/api/comercios/:id', async (req, res) => {
       [id]
     );
 
-    res.json({ ...comercio, fotos, plan_info: planInfo, acceso_restringido: false });
+    // Showcase de productos/servicios y testimonios aprobados (sección 3.C/3.D del plan de
+    // tarjetas/landing) - solo se arma para comercios con ficha completa, igual que fotos.
+    const productos = await dbAll(
+      'SELECT id, nombre, descripcion, precio, foto_url, orden FROM comercio_productos WHERE comercio_id = ? ORDER BY orden ASC',
+      [id]
+    );
+    const testimonios = await dbAll(
+      'SELECT id, autor_nombre, texto FROM comercio_testimonios WHERE comercio_id = ? AND aprobado = 1 ORDER BY fecha_creacion DESC',
+      [id]
+    );
+
+    // horarios_json llega como texto crudo - el frontend lo parsea y calcula "Abierto ahora"
+    // con la hora local del dispositivo (sección 3.B del plan), el backend no interpreta zona horaria.
+    let horariosJson = null;
+    try {
+      horariosJson = comercio.horarios_json ? JSON.parse(comercio.horarios_json) : null;
+    } catch (e) {
+      horariosJson = null;
+    }
+
+    res.json({
+      ...comercio,
+      horarios_json: horariosJson,
+      fotos,
+      productos,
+      testimonios,
+      plan_info: planInfo,
+      acceso_restringido: false
+    });
   } catch (error) {
     console.error('Error in GET /api/comercios/:id:', error);
     res.status(500).json({ error: 'Error al obtener el comercio.' });
+  }
+});
+
+// POST /api/comercios/:id/reclamar - "¿Sos el dueño de este comercio? Reclamá tu perfil"
+// (sección 5.1 del plan de tarjetas/landing: el gancho principal para vender Premium a partir
+// de una ficha gratuita restringida). Público, no requiere que el comercio ya sea Premium.
+app.post('/api/comercios/:id/reclamar', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, telefono, email, mensaje } = req.body;
+
+  if (!nombre || (!telefono && !email)) {
+    return res.status(400).json({ error: 'Nombre y al menos un dato de contacto (teléfono o email) son requeridos.' });
+  }
+
+  try {
+    const comercio = await dbGet("SELECT id, nombre_negocio FROM comercios WHERE id = ? AND estado = 'activo'", [id]);
+    if (!comercio) {
+      return res.status(404).json({ error: 'Comercio no encontrado.' });
+    }
+
+    const result = await dbRun(`
+      INSERT INTO reclamos_perfil (comercio_id, nombre_solicitante, telefono_solicitante, email_solicitante, mensaje, estado)
+      VALUES (?, ?, ?, ?, ?, 'pendiente')
+    `, [id, nombre, telefono || null, email || null, mensaje || null]);
+
+    // Mismo patrón que el resto del ecosistema (alta de suscripción, webhook de MP): un reclamo
+    // de perfil real le crea al equipo de ventas una tarea de seguimiento en el Kanban.
+    await dbRun(`
+      INSERT INTO tareas_trabajo (titulo, descripcion, estado, prioridad, comercio_id, fecha_limite)
+      VALUES (?, ?, 'todo', 'alta', ?, ?)
+    `, [
+      `Reclamo de perfil: ${comercio.nombre_negocio}`,
+      `${nombre} dice ser el dueño de "${comercio.nombre_negocio}" y reclamó su perfil desde la ficha pública.\n` +
+        `Contacto: ${telefono || 'sin teléfono'} ${email ? '| ' + email : ''}\n` +
+        `Mensaje: ${mensaje || '(sin mensaje)'}\n\n` +
+        `Acción: contactar para ofrecer upgrade a Premium (WhatsApp, catálogo, mapa, horarios).`,
+      id,
+      new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    ]);
+
+    res.status(201).json({ success: true, message: 'Reclamo recibido. El equipo se va a poner en contacto.', reclamoId: result.lastID });
+  } catch (error) {
+    console.error('Error in POST /api/comercios/:id/reclamar:', error);
+    res.status(500).json({ error: 'Error al registrar el reclamo.' });
+  }
+});
+
+// POST /api/tracking/evento - Registro de búsquedas y clics (sección 5.2 del plan: alimenta el
+// Panel de Estadísticas Premium y el reporte de "clics perdidos" para vender Premium a comercios
+// gratuitos/destacados). Público, sin autenticación, pensado para no bloquear nunca la UI si falla.
+const TIPOS_EVENTO_VALIDOS = [
+  'busqueda',
+  'click_ver_mas',
+  'visita_restringida',
+  'visita_ficha',
+  'click_whatsapp',
+  'click_llamar',
+  'click_como_llegar',
+  'click_reclamar_perfil'
+];
+
+app.post('/api/tracking/evento', async (req, res) => {
+  const { comercio_id, tipo, termino_busqueda, origen } = req.body;
+
+  if (!tipo || !TIPOS_EVENTO_VALIDOS.includes(tipo)) {
+    return res.status(400).json({ error: 'Tipo de evento inválido.' });
+  }
+
+  try {
+    await dbRun(`
+      INSERT INTO eventos_tracking (comercio_id, tipo, termino_busqueda, origen)
+      VALUES (?, ?, ?, ?)
+    `, [comercio_id || null, tipo, termino_busqueda || null, origen || null]);
+    res.status(201).json({ success: true });
+  } catch (error) {
+    console.error('Error in POST /api/tracking/evento:', error);
+    res.status(500).json({ error: 'Error al registrar el evento.' });
   }
 });
 
@@ -673,7 +778,7 @@ app.put('/api/admin/comercios/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const {
     nombre_negocio, telefono, direccion, descripcion, plan, estado, es_agrocomercio,
-    localidad_id, latitud, longitud, horarios, facebook, sitio_web
+    localidad_id, latitud, longitud, horarios, horarios_json, facebook, sitio_web
   } = req.body;
 
   try {
@@ -686,7 +791,7 @@ app.put('/api/admin/comercios/:id', requireAdmin, async (req, res) => {
     await dbRun(`
       UPDATE comercios
       SET nombre_negocio = ?, telefono = ?, direccion = ?, descripcion = ?, plan = ?, estado = ?, es_agrocomercio = ?,
-          localidad_id = ?, latitud = ?, longitud = ?, horarios = ?, facebook = ?, sitio_web = ?
+          localidad_id = ?, latitud = ?, longitud = ?, horarios = ?, horarios_json = ?, facebook = ?, sitio_web = ?
       WHERE id = ?
     `, [
       nombre_negocio || commerce.nombre_negocio,
@@ -700,6 +805,8 @@ app.put('/api/admin/comercios/:id', requireAdmin, async (req, res) => {
       latitud !== undefined ? (latitud === '' ? null : latitud) : commerce.latitud,
       longitud !== undefined ? (longitud === '' ? null : longitud) : commerce.longitud,
       horarios !== undefined ? horarios : commerce.horarios,
+      // horarios_json llega del admin ya serializado como string JSON (o null para "sin cargar")
+      horarios_json !== undefined ? horarios_json : commerce.horarios_json,
       facebook !== undefined ? facebook : commerce.facebook,
       sitio_web !== undefined ? sitio_web : commerce.sitio_web,
       id
@@ -1117,6 +1224,296 @@ app.delete('/api/admin/comercios/:id/fotos/:fotoId', requireAdmin, async (req, r
     res.json({ success: true, message: 'Foto eliminada.' });
   } catch (error) {
     res.status(500).json({ error: 'Error al eliminar la foto.' });
+  }
+});
+
+// ----------------------------------------------------
+// COMERCIO PRODUCTOS ENDPOINTS (showcase de 4-6 productos/servicios, solo planes con productos_max > 0)
+// ----------------------------------------------------
+
+// GET /api/admin/comercios/:id/productos
+app.get('/api/admin/comercios/:id/productos', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const rows = await dbAll('SELECT * FROM comercio_productos WHERE comercio_id = ? ORDER BY orden ASC', [id]);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener los productos del comercio.' });
+  }
+});
+
+// POST /api/admin/comercios/:id/productos
+app.post('/api/admin/comercios/:id/productos', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { nombre, descripcion, precio, foto_url } = req.body;
+
+  if (!nombre) {
+    return res.status(400).json({ error: 'El nombre del producto/servicio es requerido.' });
+  }
+
+  try {
+    const comercio = await dbGet('SELECT id FROM comercios WHERE id = ?', [id]);
+    if (!comercio) {
+      return res.status(404).json({ error: 'Comercio no encontrado.' });
+    }
+
+    // El máximo de productos lo define el plan activo del comercio (planes.productos_max),
+    // mismo criterio que fotos_max - un comercio sin plan con showcase no puede cargar ninguno.
+    const planInfo = await dbGet(`
+      SELECT p.productos_max FROM suscripciones s
+      JOIN planes p ON s.plan_id = p.id
+      WHERE s.comercio_id = ? AND s.estado = 'activa'
+      ORDER BY s.fecha_fin DESC LIMIT 1
+    `, [id]);
+    const maxPermitido = planInfo ? planInfo.productos_max : 0;
+
+    const countRow = await dbGet('SELECT COUNT(*) as count FROM comercio_productos WHERE comercio_id = ?', [id]);
+    if (countRow.count >= maxPermitido) {
+      return res.status(409).json({
+        error: `El plan actual de este comercio permite hasta ${maxPermitido} producto(s)/servicio(s) en el showcase. Subí el plan o eliminá uno existente.`
+      });
+    }
+
+    const result = await dbRun(`
+      INSERT INTO comercio_productos (comercio_id, nombre, descripcion, precio, foto_url, orden)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [id, nombre, descripcion || null, precio !== undefined && precio !== '' ? precio : null, foto_url || null, countRow.count]);
+
+    res.status(201).json({ success: true, productoId: result.lastID });
+  } catch (error) {
+    console.error('Error in POST /api/admin/comercios/:id/productos:', error);
+    res.status(500).json({ error: 'Error al agregar el producto.' });
+  }
+});
+
+// PUT /api/admin/comercios/:id/productos/:productoId
+app.put('/api/admin/comercios/:id/productos/:productoId', requireAdmin, async (req, res) => {
+  const { id, productoId } = req.params;
+  const { nombre, descripcion, precio, foto_url, orden } = req.body;
+
+  try {
+    const producto = await dbGet('SELECT * FROM comercio_productos WHERE id = ? AND comercio_id = ?', [productoId, id]);
+    if (!producto) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+
+    await dbRun(`
+      UPDATE comercio_productos
+      SET nombre = ?, descripcion = ?, precio = ?, foto_url = ?, orden = ?
+      WHERE id = ?
+    `, [
+      nombre || producto.nombre,
+      descripcion !== undefined ? descripcion : producto.descripcion,
+      precio !== undefined && precio !== '' ? precio : producto.precio,
+      foto_url !== undefined ? foto_url : producto.foto_url,
+      orden !== undefined ? orden : producto.orden,
+      productoId
+    ]);
+
+    res.json({ success: true, message: 'Producto actualizado correctamente.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar el producto.' });
+  }
+});
+
+// DELETE /api/admin/comercios/:id/productos/:productoId
+app.delete('/api/admin/comercios/:id/productos/:productoId', requireAdmin, async (req, res) => {
+  const { productoId } = req.params;
+  try {
+    await dbRun('DELETE FROM comercio_productos WHERE id = ?', [productoId]);
+    res.json({ success: true, message: 'Producto eliminado.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar el producto.' });
+  }
+});
+
+// ----------------------------------------------------
+// COMERCIO TESTIMONIOS ENDPOINTS (reseñas moderadas antes de publicarse)
+// ----------------------------------------------------
+
+// GET /api/admin/comercios/:id/testimonios
+app.get('/api/admin/comercios/:id/testimonios', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const rows = await dbAll('SELECT * FROM comercio_testimonios WHERE comercio_id = ? ORDER BY fecha_creacion DESC', [id]);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener los testimonios del comercio.' });
+  }
+});
+
+// POST /api/admin/comercios/:id/testimonios - el admin los carga a mano (el plan de negocio
+// no define todavía un formulario público de reseñas) y decide si quedan aprobados de una o no.
+app.post('/api/admin/comercios/:id/testimonios', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { autor_nombre, texto, aprobado } = req.body;
+
+  if (!autor_nombre || !texto) {
+    return res.status(400).json({ error: 'Autor y texto del testimonio son requeridos.' });
+  }
+
+  try {
+    const comercio = await dbGet('SELECT id FROM comercios WHERE id = ?', [id]);
+    if (!comercio) {
+      return res.status(404).json({ error: 'Comercio no encontrado.' });
+    }
+
+    const result = await dbRun(`
+      INSERT INTO comercio_testimonios (comercio_id, autor_nombre, texto, aprobado)
+      VALUES (?, ?, ?, ?)
+    `, [id, autor_nombre, texto, aprobado ? 1 : 0]);
+
+    res.status(201).json({ success: true, testimonioId: result.lastID });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al agregar el testimonio.' });
+  }
+});
+
+// PUT /api/admin/comercios/:id/testimonios/:testimonioId - editar texto y/o aprobar/desaprobar
+app.put('/api/admin/comercios/:id/testimonios/:testimonioId', requireAdmin, async (req, res) => {
+  const { id, testimonioId } = req.params;
+  const { autor_nombre, texto, aprobado } = req.body;
+
+  try {
+    const testimonio = await dbGet('SELECT * FROM comercio_testimonios WHERE id = ? AND comercio_id = ?', [testimonioId, id]);
+    if (!testimonio) {
+      return res.status(404).json({ error: 'Testimonio no encontrado.' });
+    }
+
+    await dbRun(`
+      UPDATE comercio_testimonios SET autor_nombre = ?, texto = ?, aprobado = ? WHERE id = ?
+    `, [
+      autor_nombre || testimonio.autor_nombre,
+      texto || testimonio.texto,
+      aprobado !== undefined ? (aprobado ? 1 : 0) : testimonio.aprobado,
+      testimonioId
+    ]);
+
+    res.json({ success: true, message: 'Testimonio actualizado correctamente.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar el testimonio.' });
+  }
+});
+
+// DELETE /api/admin/comercios/:id/testimonios/:testimonioId
+app.delete('/api/admin/comercios/:id/testimonios/:testimonioId', requireAdmin, async (req, res) => {
+  const { testimonioId } = req.params;
+  try {
+    await dbRun('DELETE FROM comercio_testimonios WHERE id = ?', [testimonioId]);
+    res.json({ success: true, message: 'Testimonio eliminado.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar el testimonio.' });
+  }
+});
+
+// ----------------------------------------------------
+// RECLAMOS DE PERFIL ENDPOINTS ("¿Sos el dueño? Reclamá tu perfil" - sección 5.1 del plan)
+// ----------------------------------------------------
+
+// GET /api/admin/reclamos
+app.get('/api/admin/reclamos', requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(`
+      SELECT r.*, c.nombre_negocio, c.plan
+      FROM reclamos_perfil r
+      JOIN comercios c ON r.comercio_id = c.id
+      ORDER BY r.fecha_creacion DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener los reclamos de perfil.' });
+  }
+});
+
+// PUT /api/admin/reclamos/:id - marcar como contactado/aprobado/rechazado (seguimiento manual,
+// no otorga Premium automáticamente: el equipo de ventas cierra el upgrade con el comerciante)
+app.put('/api/admin/reclamos/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+
+  if (!estado || !['pendiente', 'contactado', 'aprobado', 'rechazado'].includes(estado)) {
+    return res.status(400).json({ error: 'Estado inválido.' });
+  }
+
+  try {
+    const reclamo = await dbGet('SELECT * FROM reclamos_perfil WHERE id = ?', [id]);
+    if (!reclamo) {
+      return res.status(404).json({ error: 'Reclamo no encontrado.' });
+    }
+
+    await dbRun('UPDATE reclamos_perfil SET estado = ? WHERE id = ?', [estado, id]);
+    res.json({ success: true, message: 'Reclamo actualizado correctamente.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar el reclamo.' });
+  }
+});
+
+// ----------------------------------------------------
+// ESTADÍSTICAS ENDPOINTS (Panel de Estadísticas Premium + reporte de "clics perdidos" gratuitos)
+// ----------------------------------------------------
+
+// GET /api/admin/estadisticas/clics-perdidos - sección 5.2 del plan: "120 vecinos intentaron
+// contactar a tu negocio esta semana" - cuenta clics en "Ver más" y visitas a la ficha restringida
+// de comercios SIN ficha completa, para que el Community Manager los use como argumento de venta.
+app.get('/api/admin/estadisticas/clics-perdidos', requireAdmin, async (req, res) => {
+  try {
+    const dias = parseInt(req.query.dias) || 30;
+    const formato = req.query.format;
+
+    const rows = await dbAll(`
+      SELECT c.id as comercio_id, c.nombre_negocio, c.plan, c.email_titular, c.telefono,
+             COUNT(*) as intentos_contacto
+      FROM eventos_tracking e
+      JOIN comercios c ON e.comercio_id = c.id
+      WHERE e.tipo IN ('click_ver_mas', 'visita_restringida')
+        AND e.fecha >= datetime('now', ?)
+      GROUP BY c.id
+      ORDER BY intentos_contacto DESC
+    `, [`-${dias} days`]);
+
+    if (formato === 'csv') {
+      const header = 'comercio_id,nombre_negocio,plan,email_titular,telefono,intentos_contacto\n';
+      const body = rows.map(r =>
+        [r.comercio_id, `"${(r.nombre_negocio || '').replace(/"/g, '""')}"`, r.plan, r.email_titular, r.telefono, r.intentos_contacto].join(',')
+      ).join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="clics-perdidos-${dias}dias.csv"`);
+      return res.send(header + body);
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error in GET /api/admin/estadisticas/clics-perdidos:', error);
+    res.status(500).json({ error: 'Error al obtener el reporte de clics perdidos.' });
+  }
+});
+
+// GET /api/admin/comercios/:id/estadisticas - Panel de Estadísticas de un comercio Premium
+// (sección 4 de la matriz: "visitas, clicks a WhatsApp" como justificador del gasto)
+app.get('/api/admin/comercios/:id/estadisticas', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const dias = parseInt(req.query.dias) || 30;
+
+    const porTipo = await dbAll(`
+      SELECT tipo, COUNT(*) as total
+      FROM eventos_tracking
+      WHERE comercio_id = ? AND fecha >= datetime('now', ?)
+      GROUP BY tipo
+    `, [id, `-${dias} days`]);
+
+    const porDia = await dbAll(`
+      SELECT date(fecha) as dia, tipo, COUNT(*) as total
+      FROM eventos_tracking
+      WHERE comercio_id = ? AND fecha >= datetime('now', ?)
+      GROUP BY dia, tipo
+      ORDER BY dia ASC
+    `, [id, `-${dias} days`]);
+
+    res.json({ dias, por_tipo: porTipo, por_dia: porDia });
+  } catch (error) {
+    console.error('Error in GET /api/admin/comercios/:id/estadisticas:', error);
+    res.status(500).json({ error: 'Error al obtener las estadísticas del comercio.' });
   }
 });
 

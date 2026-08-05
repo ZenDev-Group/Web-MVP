@@ -63,6 +63,17 @@ function initView() {
                 <span>➕</span> Nueva Localidad
             </button>
         `;
+    } else if (currentView === 'reclamos') {
+        viewTitle.textContent = 'Reclamos de Perfil';
+        viewSubtitle.textContent = '"¿Sos el dueño? Reclamá tu perfil" - pedidos de contacto desde fichas gratuitas restringidas';
+    } else if (currentView === 'estadisticas') {
+        viewTitle.textContent = 'Clics Perdidos';
+        viewSubtitle.textContent = 'Intentos de contacto (Ver más / ficha restringida) en comercios sin ficha completa - último 30 días';
+        actionButtonContainer.innerHTML = `
+            <button class="btn-primary-admin" onclick="descargarClicsPerdidosCSV()">
+                <span>⬇️</span> Descargar CSV
+            </button>
+        `;
     }
 
     // Attach search and filter event listeners
@@ -82,6 +93,8 @@ async function fetchData() {
     else if (currentView === 'suscripciones') endpoint = '/admin/suscripciones';
     else if (currentView === 'planes') endpoint = '/admin/planes';
     else if (currentView === 'localidades') endpoint = '/admin/localidades';
+    else if (currentView === 'reclamos') endpoint = '/admin/reclamos';
+    else if (currentView === 'estadisticas') endpoint = '/admin/estadisticas/clics-perdidos';
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -129,6 +142,11 @@ function renderTable() {
                             item.slug.toLowerCase().includes(searchVal);
         } else if (currentView === 'localidades') {
             matchesSearch = item.nombre.toLowerCase().includes(searchVal);
+        } else if (currentView === 'reclamos') {
+            matchesSearch = item.nombre_negocio.toLowerCase().includes(searchVal) ||
+                            item.nombre_solicitante.toLowerCase().includes(searchVal);
+        } else if (currentView === 'estadisticas') {
+            matchesSearch = item.nombre_negocio.toLowerCase().includes(searchVal);
         }
 
         // Apply status filter (relevant to commerce)
@@ -294,11 +312,135 @@ function renderTable() {
                 </td>
             </tr>
         `).join('');
+    } else if (currentView === 'reclamos') {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Comercio</th>
+                <th>Solicitante</th>
+                <th>Contacto</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        `;
+
+        tableBody.innerHTML = filtered.map(r => `
+            <tr>
+                <td>
+                    <div style="font-weight: 600;">${escapeHTML(r.nombre_negocio)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);"><span class="badge-plan ${escapeHTML(r.plan)}">${escapeHTML(r.plan)}</span></div>
+                </td>
+                <td>${escapeHTML(r.nombre_solicitante)}</td>
+                <td style="font-size: 0.85rem;">${escapeHTML(r.telefono_solicitante || '')} ${r.email_solicitante ? '<br>' + escapeHTML(r.email_solicitante) : ''}</td>
+                <td>${new Date(r.fecha_creacion).toLocaleDateString('es-AR')}</td>
+                <td><span class="badge-status ${r.estado === 'aprobado' ? 'activo' : (r.estado === 'rechazado' ? 'suspendido' : 'pendiente')}">${escapeHTML(r.estado)}</span></td>
+                <td>
+                    <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--bg-card); border: 1px solid var(--border-color);" onclick="abrirReclamoDetalle(${r.id})">Ver / Responder</button>
+                </td>
+            </tr>
+        `).join('');
+    } else if (currentView === 'estadisticas') {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Comercio</th>
+                <th>Plan actual</th>
+                <th>Contacto</th>
+                <th>Intentos de contacto</th>
+                <th>Acciones</th>
+            </tr>
+        `;
+
+        tableBody.innerHTML = filtered.map(e => `
+            <tr>
+                <td><strong>${escapeHTML(e.nombre_negocio)}</strong></td>
+                <td><span class="badge-plan ${escapeHTML(e.plan)}">${escapeHTML(e.plan)}</span></td>
+                <td style="font-size: 0.85rem;">${escapeHTML(e.telefono || '')}<br>${escapeHTML(e.email_titular || '')}</td>
+                <td><strong style="color: var(--primary, #e11d48);">${e.intentos_contacto}</strong></td>
+                <td>
+                    <button class="btn-primary-admin" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--bg-card); border: 1px solid var(--border-color);" onclick="copiarMensajeVenta(${e.comercio_id}, '${escapeHTML(e.nombre_negocio).replace(/'/g, "\\'")}', ${e.intentos_contacto})">Copiar mensaje de venta</button>
+                </td>
+            </tr>
+        `).join('');
     }
 
     if (filtered.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-secondary); padding: 3rem;">No se encontraron registros en el listado.</td></tr>`;
     }
+}
+
+// ----------------------------------------------------
+// RECLAMOS DE PERFIL ("¿Sos el dueño? Reclamá tu perfil")
+// ----------------------------------------------------
+
+let reclamoActualId = null;
+
+function abrirReclamoDetalle(id) {
+    const r = listData.find(x => x.id == id);
+    if (!r) return;
+    reclamoActualId = id;
+
+    document.getElementById('reclamoDetalle').innerHTML = `
+        <div><strong>Comercio:</strong> ${escapeHTML(r.nombre_negocio)} (plan actual: ${escapeHTML(r.plan)})</div>
+        <div><strong>Solicitante:</strong> ${escapeHTML(r.nombre_solicitante)}</div>
+        <div><strong>Teléfono:</strong> ${escapeHTML(r.telefono_solicitante || 'N/A')}</div>
+        <div><strong>Email:</strong> ${escapeHTML(r.email_solicitante || 'N/A')}</div>
+        <div><strong>Mensaje:</strong> ${escapeHTML(r.mensaje || '(sin mensaje)')}</div>
+        <div><strong>Estado actual:</strong> <span class="badge-status ${r.estado === 'aprobado' ? 'activo' : (r.estado === 'rechazado' ? 'suspendido' : 'pendiente')}">${escapeHTML(r.estado)}</span></div>
+    `;
+    document.getElementById('reclamoModal').classList.add('active');
+}
+
+function closeReclamoModal() {
+    document.getElementById('reclamoModal').classList.remove('active');
+    reclamoActualId = null;
+}
+
+async function responderReclamo(estado) {
+    if (!reclamoActualId) return;
+    try {
+        const response = await fetch(`${API_URL}/admin/reclamos/${reclamoActualId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ estado })
+        });
+        if (!response.ok) throw new Error('Error updating reclamo');
+        closeReclamoModal();
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        alert('Error al actualizar el reclamo.');
+    }
+}
+
+// ----------------------------------------------------
+// ESTADÍSTICAS - reporte de clics perdidos (gancho de venta para comercios gratuitos)
+// ----------------------------------------------------
+
+function descargarClicsPerdidosCSV() {
+    const url = `${API_URL}/admin/estadisticas/clics-perdidos?format=csv`;
+    fetch(url, { headers: getHeaders() })
+        .then(res => res.blob())
+        .then(blob => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'clics-perdidos.csv';
+            a.click();
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Error al descargar el reporte.');
+        });
+}
+
+// Arma el mensaje de venta sugerido por el plan (sección 5.2) y lo copia al portapapeles,
+// listo para pegar en WhatsApp/email al comerciante.
+function copiarMensajeVenta(comercioId, nombreNegocio, intentos) {
+    const mensaje = `Hola! Vimos que ${intentos} vecino${intentos === 1 ? '' : 's'} de Colón intentaron contactar a "${nombreNegocio}" esta semana a través de comerciantes.com.ar, pero tu ficha todavía no tiene el contacto directo activado. Activá tu plan Premium hoy para habilitar WhatsApp, mapa y catálogo, y no perder más ventas.`;
+    navigator.clipboard.writeText(mensaje).then(() => {
+        alert('Mensaje copiado al portapapeles.');
+    }).catch(() => {
+        prompt('Copiá el mensaje manualmente:', mensaje);
+    });
 }
 
 // Delete commerce from table row
@@ -324,7 +466,7 @@ async function deleteCommerce(id) {
 // EDIT COMMERCE/SUBSCRIPTION MODAL OPERATIONS
 // ----------------------------------------------------
 
-function openCommerceEdit(id) {
+async function openCommerceEdit(id) {
     const item = listData.find(c => c.id == id);
     if (!item) return;
 
@@ -337,8 +479,9 @@ function openCommerceEdit(id) {
     document.getElementById('commIsAgro').checked = item.es_agrocomercio === 1;
 
     // Los planes del directorio se toman del catálogo real en `planes`,
-    // la misma fuente que usa la vista de Suscripciones.
-    poblarPlanesComercio(item.plan);
+    // la misma fuente que usa la vista de Suscripciones. Se espera a que termine de cargar
+    // (y de poblar planesCache) antes de decidir si el showcase de productos va visible.
+    await poblarPlanesComercio(item.plan);
     document.getElementById('commStatus').value = item.estado;
 
     document.getElementById('commLat').value = item.latitud || '';
@@ -349,8 +492,224 @@ function openCommerceEdit(id) {
 
     poblarLocalidades(item.localidad_id);
     cargarFotosComercio(item.id);
+    renderHorariosEstructurados(item.horarios_json);
+    poblarShowcaseComercio(item);
 
     document.getElementById('editCommerceModal').classList.add('active');
+}
+
+// ----------------------------------------------------
+// HORARIO ESTRUCTURADO POR DÍA (badge "Abierto ahora / Cerrado" de la landing Premium)
+// Índice del array = Date.getDay() en JS (0=domingo..6=sábado), para que el frontend público
+// no tenga que convertir nada al calcular si está abierto con la hora local del dispositivo.
+// ----------------------------------------------------
+
+const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function renderHorariosEstructurados(horariosJsonStr) {
+    let horarios = [];
+    try {
+        horarios = horariosJsonStr ? JSON.parse(horariosJsonStr) : [];
+    } catch (e) {
+        horarios = [];
+    }
+
+    const cont = document.getElementById('commHorariosEstructurados');
+    cont.innerHTML = DIAS_SEMANA.map((nombreDia, i) => {
+        const d = horarios[i] || { cerrado: true, apertura: '', cierre: '' };
+        return `
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;" data-dia="${i}">
+                <span style="width: 90px; flex-shrink: 0;">${nombreDia}</span>
+                <label style="display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0;">
+                    <input type="checkbox" class="dia-cerrado" ${d.cerrado ? 'checked' : ''} onchange="this.closest('[data-dia]').querySelectorAll('.dia-hora').forEach(inp => inp.disabled = this.checked)">
+                    Cerrado
+                </label>
+                <input type="time" class="form-input dia-hora dia-apertura" style="padding: 0.3rem; width: 110px;" value="${d.apertura || ''}" ${d.cerrado ? 'disabled' : ''}>
+                <span>a</span>
+                <input type="time" class="form-input dia-hora dia-cierre" style="padding: 0.3rem; width: 110px;" value="${d.cierre || ''}" ${d.cerrado ? 'disabled' : ''}>
+            </div>
+        `;
+    }).join('');
+}
+
+function leerHorariosEstructurados() {
+    const filas = document.querySelectorAll('#commHorariosEstructurados [data-dia]');
+    const horarios = [];
+    let algunoCargado = false;
+    filas.forEach(fila => {
+        const cerrado = fila.querySelector('.dia-cerrado').checked;
+        const apertura = fila.querySelector('.dia-apertura').value;
+        const cierre = fila.querySelector('.dia-cierre').value;
+        if (cerrado || (apertura && cierre)) algunoCargado = true;
+        horarios.push({ cerrado, apertura: apertura || null, cierre: cierre || null });
+    });
+    return algunoCargado ? JSON.stringify(horarios) : null;
+}
+
+// ----------------------------------------------------
+// SHOWCASE DE PRODUCTOS/SERVICIOS Y TESTIMONIOS (dentro del modal de edición de comercio)
+// ----------------------------------------------------
+
+function poblarShowcaseComercio(item) {
+    const plan = planesCache.find(p => p.slug === item.plan);
+    const max = plan ? plan.productos_max : 0;
+
+    const productosGroup = document.getElementById('commProductosGroup');
+    const testimoniosGroup = document.getElementById('commTestimoniosGroup');
+
+    document.getElementById('commProductosMax').textContent = max;
+    productosGroup.style.display = max > 0 ? 'block' : 'none';
+    testimoniosGroup.style.display = max > 0 ? 'block' : 'none';
+
+    if (max > 0) {
+        cargarProductosComercio(item.id);
+        cargarTestimoniosComercio(item.id);
+    }
+}
+
+async function cargarProductosComercio(comercioId) {
+    const list = document.getElementById('commProductosList');
+    list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">Cargando productos...</p>';
+    try {
+        const response = await fetch(`${API_URL}/admin/comercios/${comercioId}/productos`, { headers: getHeaders() });
+        const productos = await response.json();
+        renderProductosComercio(productos);
+    } catch (error) {
+        console.error('Error loading productos:', error);
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--danger);">Error al cargar los productos.</p>';
+    }
+}
+
+function renderProductosComercio(productos) {
+    const list = document.getElementById('commProductosList');
+    if (!productos.length) {
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">Todavía no hay productos/servicios cargados.</p>';
+        return;
+    }
+    list.innerHTML = productos.map(p => `
+        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+            ${p.foto_url ? `<img src="${escapeHTML(p.foto_url)}" alt="" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color);" onerror="this.style.opacity='0.3'">` : ''}
+            <span style="flex: 1;">${escapeHTML(p.nombre)}${p.precio ? ' — $' + Number(p.precio).toLocaleString('es-AR') : ''}</span>
+            <button type="button" class="btn-logout" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="eliminarProductoComercio(${p.id})">Eliminar</button>
+        </div>
+    `).join('');
+}
+
+async function agregarProductoComercio() {
+    const comercioId = document.getElementById('editCommId').value;
+    const nombre = document.getElementById('commNuevoProdNombre').value.trim();
+    const precio = document.getElementById('commNuevoProdPrecio').value.trim();
+    const foto_url = document.getElementById('commNuevoProdFoto').value.trim();
+    if (!nombre) return;
+
+    try {
+        const response = await fetch(`${API_URL}/admin/comercios/${comercioId}/productos`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ nombre, precio: precio || undefined, foto_url: foto_url || undefined })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Error al agregar el producto');
+        document.getElementById('commNuevoProdNombre').value = '';
+        document.getElementById('commNuevoProdPrecio').value = '';
+        document.getElementById('commNuevoProdFoto').value = '';
+        cargarProductosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'Error al agregar el producto.');
+    }
+}
+
+async function eliminarProductoComercio(productoId) {
+    const comercioId = document.getElementById('editCommId').value;
+    if (!confirm('¿Eliminar este producto/servicio?')) return;
+    try {
+        await fetch(`${API_URL}/admin/comercios/${comercioId}/productos/${productoId}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        cargarProductosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function cargarTestimoniosComercio(comercioId) {
+    const list = document.getElementById('commTestimoniosList');
+    list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">Cargando testimonios...</p>';
+    try {
+        const response = await fetch(`${API_URL}/admin/comercios/${comercioId}/testimonios`, { headers: getHeaders() });
+        const testimonios = await response.json();
+        renderTestimoniosComercio(testimonios);
+    } catch (error) {
+        console.error('Error loading testimonios:', error);
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--danger);">Error al cargar los testimonios.</p>';
+    }
+}
+
+function renderTestimoniosComercio(testimonios) {
+    const list = document.getElementById('commTestimoniosList');
+    if (!testimonios.length) {
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">Todavía no hay testimonios cargados.</p>';
+        return;
+    }
+    list.innerHTML = testimonios.map(t => `
+        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+            <span style="flex: 1;"><strong>${escapeHTML(t.autor_nombre)}:</strong> "${escapeHTML(t.texto)}"</span>
+            <button type="button" class="btn-primary-admin" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; ${t.aprobado ? '' : 'background: var(--bg-card); border: 1px solid var(--border-color);'}" onclick="toggleAprobarTestimonio(${t.id}, ${t.aprobado ? 0 : 1})">${t.aprobado ? 'Aprobado ✓' : 'Aprobar'}</button>
+            <button type="button" class="btn-logout" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="eliminarTestimonioComercio(${t.id})">Eliminar</button>
+        </div>
+    `).join('');
+}
+
+async function agregarTestimonioComercio() {
+    const comercioId = document.getElementById('editCommId').value;
+    const autor_nombre = document.getElementById('commNuevoTestiAutor').value.trim();
+    const texto = document.getElementById('commNuevoTestiTexto').value.trim();
+    if (!autor_nombre || !texto) return;
+
+    try {
+        const response = await fetch(`${API_URL}/admin/comercios/${comercioId}/testimonios`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ autor_nombre, texto })
+        });
+        if (!response.ok) throw new Error('Error adding testimonio');
+        document.getElementById('commNuevoTestiAutor').value = '';
+        document.getElementById('commNuevoTestiTexto').value = '';
+        cargarTestimoniosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+        alert('Error al agregar el testimonio.');
+    }
+}
+
+async function toggleAprobarTestimonio(testimonioId, aprobado) {
+    const comercioId = document.getElementById('editCommId').value;
+    try {
+        await fetch(`${API_URL}/admin/comercios/${comercioId}/testimonios/${testimonioId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ aprobado })
+        });
+        cargarTestimoniosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function eliminarTestimonioComercio(testimonioId) {
+    const comercioId = document.getElementById('editCommId').value;
+    if (!confirm('¿Eliminar este testimonio?')) return;
+    try {
+        await fetch(`${API_URL}/admin/comercios/${comercioId}/testimonios/${testimonioId}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        cargarTestimoniosComercio(comercioId);
+    } catch (error) {
+        console.error(error);
+    }
 }
 
 // ----------------------------------------------------
@@ -722,6 +1081,7 @@ document.getElementById('commerceForm').addEventListener('submit', async (e) => 
         latitud: document.getElementById('commLat').value || null,
         longitud: document.getElementById('commLng').value || null,
         horarios: document.getElementById('commHorarios').value,
+        horarios_json: leerHorariosEstructurados(),
         facebook: document.getElementById('commFacebook').value,
         sitio_web: document.getElementById('commSitioWeb').value
     };
