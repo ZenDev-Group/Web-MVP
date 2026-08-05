@@ -170,7 +170,19 @@ app.get('/api/comercios', async (req, res) => {
       params.push(`%${q}%`);
     }
 
-    sql += ' ORDER BY c.nombre_negocio ASC';
+    // Prioridad de ordenamiento (matriz de diferenciación de planes, sección 2.A del plan de
+    // tarjetas/landing): Premium aparece primero, Destacado en el medio, y Gratuito en orden
+    // cronológico estándar (por fecha de alta) al final - mismo criterio de "premium/destacado/
+    // gratuito" que ya usa el frontend (comercios.js) para la cinta y el link a la ficha completa.
+    sql += `
+      ORDER BY
+        CASE
+          WHEN c.plan LIKE 'premium%' THEN 2
+          WHEN c.plan != 'gratuito' THEN 1
+          ELSE 0
+        END DESC,
+        c.fecha_registro ASC
+    `;
 
     const rows = await dbAll(sql, params);
     res.json(rows);
