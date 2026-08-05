@@ -285,6 +285,20 @@ async function initDb() {
   `);
   await dbRun('CREATE INDEX IF NOT EXISTS idx_eventos_tracking_comercio ON eventos_tracking (comercio_id, tipo, fecha)');
 
+  // 17. Create Comercio Mensajes Table (mensaje directo desde la web, reemplaza WhatsApp/llamar
+  // en el modal de ficha gratis - cada mensaje es además un lead real para vender Premium)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS comercio_mensajes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comercio_id INTEGER NOT NULL,
+      nombre_remitente TEXT NOT NULL,
+      contacto_remitente TEXT NOT NULL,
+      mensaje TEXT NOT NULL,
+      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comercio_id) REFERENCES comercios (id) ON DELETE CASCADE
+    )
+  `);
+
   // Add map/profile columns to comercios (migrations fallback, same pattern as vendemax_suscripcion_id above)
   const comerciosNewColumns = [
     'ALTER TABLE comercios ADD COLUMN localidad_id INTEGER',

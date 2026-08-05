@@ -326,7 +326,8 @@ const TIPOS_EVENTO_VALIDOS = [
   'click_whatsapp',
   'click_llamar',
   'click_como_llegar',
-  'click_reclamar_perfil'
+  'click_reclamar_perfil',
+  'intento_contacto'
 ];
 
 app.post('/api/tracking/evento', async (req, res) => {
@@ -345,6 +346,41 @@ app.post('/api/tracking/evento', async (req, res) => {
   } catch (error) {
     console.error('Error in POST /api/tracking/evento:', error);
     res.status(500).json({ error: 'Error al registrar el evento.' });
+  }
+});
+
+// POST /api/comercios/:id/mensajes - Mensaje directo desde la web a un comercio sin ficha
+// completa (reemplaza WhatsApp/llamar, que solo se muestran a partir de Premium). Cada mensaje
+// es además un "intento de contacto perdido" real para el reporte de ventas del admin.
+app.post('/api/comercios/:id/mensajes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, contacto, mensaje } = req.body;
+
+    if (!nombre || !contacto || !mensaje) {
+      return res.status(400).json({ error: 'Faltan campos requeridos (nombre, contacto, mensaje).' });
+    }
+
+    const comercio = await dbGet("SELECT id FROM comercios WHERE id = ? AND estado = 'activo'", [id]);
+    if (!comercio) {
+      return res.status(404).json({ error: 'Comercio no encontrado.' });
+    }
+
+    await dbRun(`
+      INSERT INTO comercio_mensajes (comercio_id, nombre_remitente, contacto_remitente, mensaje)
+      VALUES (?, ?, ?, ?)
+    `, [id, nombre, contacto, mensaje]);
+
+    // Registrar evento de intento de contacto para el reporte de "clics perdidos" del admin
+    await dbRun(`
+      INSERT INTO eventos_tracking (comercio_id, tipo, origen)
+      VALUES (?, 'intento_contacto', 'mensaje_web')
+    `, [id]);
+
+    res.json({ success: true, message: 'Mensaje enviado correctamente.' });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ error: 'Error al procesar el mensaje.' });
   }
 });
 
@@ -1465,7 +1501,7 @@ app.get('/api/admin/estadisticas/clics-perdidos', requireAdmin, async (req, res)
              COUNT(*) as intentos_contacto
       FROM eventos_tracking e
       JOIN comercios c ON e.comercio_id = c.id
-      WHERE e.tipo IN ('click_ver_mas', 'visita_restringida')
+      WHERE e.tipo IN ('click_ver_mas', 'visita_restringida', 'intento_contacto')
         AND e.fecha >= datetime('now', ?)
       GROUP BY c.id
       ORDER BY intentos_contacto DESC
